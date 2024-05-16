@@ -50,25 +50,25 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
-    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
+    # train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
+    train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     optimizer = AdamW(model.parameters(), lr=lr)
 
-    # TODO: change this!
-    val_accuracy = 0.0
-
     # TensorBoard and Logging Setup
     writer = SummaryWriter(log_dir='./runs/ner_experiment')
     logging.basicConfig(filename='training.log', level=logging.INFO)
 
+    val_accuracy = None
+    val_loss = None
+
     print('Model loaded successfully')
     for epoch in range(num_epochs):  # Number of epochs can be adjusted
         running_loss = 0.0
-        p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch}/{num_epochs}')
-        # start the train loop
+        p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}')
         model.train()
         for idx, batch in p_bar:  # use tqdm to show the progress
             input_ids = batch['input_ids'].to(device)
@@ -83,7 +83,7 @@ if __name__ == '__main__':
             # Save the model every 1/4 epoch
             if (idx + 1) % (len(train_dataloader) // 4) == 0:
                 torch.save(model.state_dict(), f'./model_epoch_{epoch + 1}_batch_{idx + 1}.pth')
-            p_bar.set_postfix(running_loss=running_loss / (idx + 1), val_accuracy=val_accuracy, mode="training")
+            p_bar.set_postfix(running_loss=running_loss / (idx + 1), val_loss=val_loss, val_acc=val_accuracy)
 
         epoch_loss = running_loss / len(train_dataloader)
         print(f"Epoch {epoch + 1}, Training Loss: {epoch_loss}")
@@ -94,13 +94,40 @@ if __name__ == '__main__':
         # Log the training loss
         logging.info(f'Epoch: {epoch + 1}, Training Loss: {epoch_loss}')
 
+        # Validation loop
         model.eval()
-        # TODO: add a validation loop here, record the val accuracy with both tensorboard and module `logging`
+        val_running_loss = 0.0
+        correct_predictions = 0
+        total_predictions = 0
 
-        p_bar = tqdm(enumerate(val_dataloader))
-        for idx, batch in p_bar:
-            current_accuracy = ...
-            p_bar.set_postfix(running_loss=running_loss, val_accuracy=current_accuracy, mode="validating")
+        p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}')
+        with torch.no_grad():
+            for idx, batch in p_bar:
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
+
+                loss = model(input_ids, attention_mask, labels=labels)
+                val_running_loss += loss.item()
+
+                predictions = model(input_ids, attention_mask)
+                for pred, label, mask in zip(predictions, labels, attention_mask):
+                    valid_labels = label[mask == 1]
+                    correct_predictions += (torch.tensor(pred).to(device) == valid_labels).sum().item()
+                    total_predictions += len(valid_labels)
+                p_bar.set_postfix(running_loss=running_loss / len(train_dataloader),
+                                  val_loss=val_running_loss / (idx + 1),
+                                  current_accuracy=correct_predictions / total_predictions)
+
+        val_loss = val_running_loss / len(val_dataloader)
+        val_accuracy = correct_predictions / total_predictions
+        print(f"Epoch {epoch + 1}, Validation Loss: {val_loss}, Validation Accuracy: {val_accuracy}")
+
+        # Send the validation loss and accuracy to TensorBoard
+        writer.add_scalar('Validation Loss', val_loss, epoch)
+        writer.add_scalar('Validation Accuracy', val_accuracy, epoch)
+
+        # Log the validation loss and accuracy
+        logging.info(f'Epoch: {epoch + 1}, Validation Loss: {val_loss}, Validation Accuracy: {val_accuracy}')
 
     writer.close()
-
