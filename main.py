@@ -25,17 +25,17 @@ class BERT_CRF(nn.Module):
         sequence_output = self.dropout(outputs[0])
         emissions = self.fc(sequence_output)
         if labels is not None:
-            loss = -self.crf(emissions, labels, mask=attention_mask.byte())
+            loss = -self.crf(emissions, labels, mask=attention_mask.bool())
             return loss
         else:
-            prediction = self.crf.decode(emissions, mask=attention_mask.byte())
+            prediction = self.crf.decode(emissions, mask=attention_mask.bool())
             return prediction
 
 
 if __name__ == '__main__':
     # ====== Training Hyperparameters ======
     num_epochs = 3
-    batch_size = 16
+    batch_size = 2
     lr = 5e-5  # fine-tuning
 
     # ============== Model Metadata ==================
