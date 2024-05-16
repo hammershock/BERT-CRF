@@ -50,8 +50,8 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
-    # train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
-    train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
+    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
+    # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
