@@ -13,9 +13,9 @@ from torch.optim import AdamW
 
 
 class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels):
+    def __init__(self, bert_model_name, num_labels, cache_dir='./bert-base-chinese'):
         super(BERT_CRF, self).__init__()
-        self.bert = BertModel.from_pretrained(bert_model_name, cache_dir='./bert-base-chinese')
+        self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
         self.dropout = nn.Dropout(0.1)
         self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
         self.crf = CRF(num_labels, batch_first=True)
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     optimizer = AdamW(model.parameters(), lr=lr)
 
     # TensorBoard and Logging Setup
-    writer = SummaryWriter(log_dir='./runs/ner_experiment')
+    writer = SummaryWriter(log_dir='../../tf-logs/ner_experiment')  # default logging dir of auto-dl
     logging.basicConfig(filename='training.log', level=logging.INFO)
 
     val_accuracy = None
