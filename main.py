@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
     # TensorBoard and Logging Setup
     writer = SummaryWriter(log_dir='../../tf-logs/ner_experiment')  # default logging dir of auto-dl
-    logging.basicConfig(filename='training.log', level=logging.INFO)
+    logging.basicConfig(filename=f'training_l{num_hidden_layers}.log', level=logging.INFO)
 
     val_accuracy = None
     val_loss = None
