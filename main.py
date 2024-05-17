@@ -25,7 +25,7 @@ if __name__ == '__main__':
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     os.makedirs(save_dir, exist_ok=True)
-    model = BERT_CRF('bert-base-chinese', num_labels=num_labels)
+    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=8, pretrained=True)
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
