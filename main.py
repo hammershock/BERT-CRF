@@ -63,7 +63,7 @@ if __name__ == '__main__':
     optimizer = AdamW(model.parameters(), lr=lr)
 
     # TensorBoard and Logging Setup
-    writer = SummaryWriter(log_dir='../../tf-logs/ner_experiment')  # default logging dir of auto-dl
+    writer = SummaryWriter(log_dir=f'../../tf-logs/ner_experiment_l{num_hidden_layers}')  # default logging dir of auto-dl
     logging.basicConfig(filename=f'training_l{num_hidden_layers}.log', level=logging.INFO)
 
     val_accuracy = None
