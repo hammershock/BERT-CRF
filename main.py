@@ -17,7 +17,7 @@ from torch.optim import AdamW
 if __name__ == '__main__':
     # ====== Training Hyperparameters ======
     num_epochs = 3
-    batch_size = 16
+    batch_size = 128
     lr = 5e-5  # fine-tuning
     num_labels = 9
     save_dir = "./models"
@@ -36,10 +36,10 @@ if __name__ == '__main__':
 
     train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
     # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=14)
     # We MUST use the same label map with Train set!
     val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=train_dataset.label_map)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=14)
 
     optimizer = AdamW(model.parameters(), lr=lr)
 
