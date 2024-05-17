@@ -1,15 +1,15 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
-from transformers import BertTokenizer
+from torch.utils.data import Dataset
 
 
 class NERDataset(Dataset):
-    def __init__(self, data_file, tag_file, tokenizer, max_len=128):
+    def __init__(self, data_file, tag_file, tokenizer, max_len=128, label_map=None):
         self.data = self.read_file(data_file)
         self.tags = self.read_file(tag_file)
         self.tokenizer = tokenizer
         self.max_len = max_len
-        self.label_map = self.create_label_map()
+        self.label_map = self.create_label_map() if label_map is None else label_map
+        self.counts = self.calculate_label_frequencies()  # 统计标签频率
 
     def read_file(self, file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -18,6 +18,13 @@ class NERDataset(Dataset):
     def create_label_map(self):
         labels = set(tag for tag_list in self.tags for tag in tag_list)
         return {label: i for i, label in enumerate(labels)}
+
+    def calculate_label_frequencies(self):
+        counts = {label: 0 for label in self.label_map.keys()}
+        for tag_list in self.tags:
+            for tag in tag_list:
+                counts[tag] += 1
+        return counts
 
     def __len__(self):
         return len(self.data)
@@ -54,3 +61,18 @@ class NERDataset(Dataset):
             'labels': torch.tensor(label_ids, dtype=torch.long)
         }
 
+
+def device_summary():
+    device = torch.cuda.current_device()
+    props = torch.cuda.get_device_properties(device)
+    total_memory = props.total_memory
+    memory_reserved = torch.cuda.memory_reserved()
+    memory_allocated = torch.cuda.memory_allocated()
+
+    memory_stats = torch.cuda.memory_stats()
+    memory_free = memory_stats['reserved_bytes.all.freed'] + memory_stats['active_bytes.all.current']
+
+    # 输出显存信息
+    print(f'Total memory: {total_memory / 1024 / 1024:.3f} MB')
+    print(f'Memory reserved: {memory_reserved / 1024 / 1024:.3f} MB')
+    print(f'Memory allocated: {memory_allocated / 1024 / 1024:.3f} MB')

@@ -1,35 +1,15 @@
-import torch.nn as nn
 from tqdm import tqdm
-from transformers import BertModel, BertTokenizer
-from torchcrf import CRF
+from transformers import BertTokenizer
+
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter  # TensorBoard
 import logging  # Logging
 
-from ner_dataset import NERDataset
+from model import BERT_CRF
+from datasets import NERDataset
 
 from torch.optim import AdamW
-
-
-class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels, cache_dir='./bert-base-chinese'):
-        super(BERT_CRF, self).__init__()
-        self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
-        self.dropout = nn.Dropout(0.1)
-        self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
-        self.crf = CRF(num_labels, batch_first=True)
-
-    def forward(self, input_ids, attention_mask, labels=None):
-        outputs = self.bert(input_ids, attention_mask=attention_mask)
-        sequence_output = self.dropout(outputs[0])
-        emissions = self.fc(sequence_output)
-        if labels is not None:
-            loss = -self.crf(emissions, labels, mask=attention_mask.bool())
-            return loss
-        else:
-            prediction = self.crf.decode(emissions, mask=attention_mask.bool())
-            return prediction
 
 
 if __name__ == '__main__':
@@ -37,11 +17,11 @@ if __name__ == '__main__':
     num_epochs = 3
     batch_size = 2
     lr = 5e-5  # fine-tuning
-
+    num_labels = 8
     # ============== Model Metadata ==================
-    tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')  # load the pretrained model
+    tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
 
-    model = BERT_CRF('bert-base-chinese', num_labels=len(tokenizer.get_vocab()))
+    model = BERT_CRF('bert-base-chinese', num_labels=num_labels)
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
@@ -53,7 +33,8 @@ if __name__ == '__main__':
     train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
     # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
+    # We MUST use the same label map with Train set!
+    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=train_dataset.label_map)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     optimizer = AdamW(model.parameters(), lr=lr)
