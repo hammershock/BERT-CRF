@@ -24,7 +24,7 @@ if __name__ == '__main__':
     save_every = 1  # save every 1 epoch
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
-
+    os.makedirs(save_dir, exist_ok=True)
     model = BERT_CRF('bert-base-chinese', num_labels=num_labels)
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
@@ -85,7 +85,6 @@ if __name__ == '__main__':
         val_running_loss = 0.0
         correct_predictions = 0
         total_predictions = 0
-        os.makedirs(save_dir, exist_ok=True)
 
         p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}', total=len(val_dataloader))
         with torch.no_grad():
