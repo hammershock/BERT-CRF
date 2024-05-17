@@ -1,3 +1,5 @@
+import os
+
 from tqdm import tqdm
 from transformers import BertTokenizer
 
@@ -18,6 +20,8 @@ if __name__ == '__main__':
     batch_size = 16
     lr = 5e-5  # fine-tuning
     num_labels = 9
+    save_dir = "./models"
+    save_every = 1  # save every 1 epoch
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
 
@@ -49,7 +53,7 @@ if __name__ == '__main__':
     print('Model loaded successfully')
     for epoch in range(num_epochs):  # Number of epochs can be adjusted
         running_loss = 0.0
-        p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}')
+        p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}', total=len(train_dataloader))
         model.train()
         for idx, batch in p_bar:  # use tqdm to show the progress
             input_ids = batch['input_ids'].to(device)
@@ -62,9 +66,10 @@ if __name__ == '__main__':
             optimizer.step()
             running_loss += loss.item()
             # Save the model every 1/4 epoch
-            if (idx + 1) % (len(train_dataloader) // 4) == 0:
-                torch.save(model.state_dict(), f'./model_epoch_{epoch + 1}_batch_{idx + 1}.pth')
             p_bar.set_postfix(running_loss=running_loss / (idx + 1), val_loss=val_loss, val_acc=val_accuracy)
+        if epoch % save_every == 0:
+            save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
+            torch.save(model.state_dict(), save_path)
 
         epoch_loss = running_loss / len(train_dataloader)
         print(f"Epoch {epoch + 1}, Training Loss: {epoch_loss}")
@@ -80,8 +85,9 @@ if __name__ == '__main__':
         val_running_loss = 0.0
         correct_predictions = 0
         total_predictions = 0
+        os.makedirs(save_dir, exist_ok=True)
 
-        p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}')
+        p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}', total=len(val_dataloader))
         with torch.no_grad():
             for idx, batch in p_bar:
                 input_ids = batch['input_ids'].to(device)
