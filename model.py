@@ -5,9 +5,12 @@ from transformers import BertModel, BertTokenizer
 
 
 class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels, cache_dir='./bert-base-chinese'):
+    def __init__(self, bert_model_name, num_labels, cache_dir='./bert-base-chinese', pretrained=True):
         super(BERT_CRF, self).__init__()
-        self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+        if pretrained:
+            self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+        else:
+            self.bert = BertModel(BertModel.config_class.from_pretrained(bert_model_name, cache_dir=cache_dir))
         self.dropout = nn.Dropout(0.1)
         self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
         self.crf = CRF(num_labels, batch_first=True)

@@ -17,7 +17,7 @@ from torch.optim import AdamW
 if __name__ == '__main__':
     # ====== Training Hyperparameters ======
     num_epochs = 30
-    batch_size = 256
+    batch_size = 420
     lr = 5e-5  # fine-tuning
     num_labels = 9
     save_dir = "./models"
