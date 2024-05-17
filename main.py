@@ -15,9 +15,9 @@ from torch.optim import AdamW
 if __name__ == '__main__':
     # ====== Training Hyperparameters ======
     num_epochs = 3
-    batch_size = 2
+    batch_size = 16
     lr = 5e-5  # fine-tuning
-    num_labels = 8
+    num_labels = 9
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
 
