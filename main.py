@@ -16,16 +16,17 @@ from torch.optim import AdamW
 
 if __name__ == '__main__':
     # ====== Training Hyperparameters ======
-    num_epochs = 30
+    num_epochs = 10
     batch_size = 420
     lr = 5e-5  # fine-tuning
     num_labels = 9
+    num_hidden_layers = 8
     save_dir = "./models"
     save_every = 1  # save every 1 epoch
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     os.makedirs(save_dir, exist_ok=True)
-    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=8, pretrained=True)
+    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=True)
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
@@ -68,7 +69,7 @@ if __name__ == '__main__':
             # Save the model every 1/4 epoch
             p_bar.set_postfix(running_loss=running_loss / (idx + 1), val_loss=val_loss, val_acc=val_accuracy)
         if epoch % save_every == 0:
-            save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
+            save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}_layers{num_hidden_layers}.pth')
             torch.save(model.state_dict(), save_path)
 
         epoch_loss = running_loss / len(train_dataloader)
