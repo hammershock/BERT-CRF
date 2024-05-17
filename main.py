@@ -1,3 +1,4 @@
+import argparse
 import os
 
 from tqdm import tqdm
@@ -14,15 +15,32 @@ from datasets import NERDataset
 from torch.optim import AdamW
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train a BERT-CRF model for NER.")
+    parser.add_argument("--num_epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--batch_size", type=int, default=420, help="Batch size")
+    parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate for fine-tuning")
+    parser.add_argument("--num_labels", type=int, default=9, help="Number of labels")
+    parser.add_argument("--num_hidden_layers", type=int, default=8, help="Number of hidden layers in BERT")
+    parser.add_argument("--save_dir", type=str, default="./models", help="Directory to save models")
+    parser.add_argument("--save_every", type=int, default=1, help="Save model every N epochs")
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
+    args = parse_args()
+
+    # 创建保存模型的目录
+    os.makedirs(args.save_dir, exist_ok=True)
+
     # ====== Training Hyperparameters ======
-    num_epochs = 10
-    batch_size = 420
-    lr = 5e-5  # fine-tuning
-    num_labels = 9
-    num_hidden_layers = 8
-    save_dir = "./models"
-    save_every = 1  # save every 1 epoch
+    num_epochs = args.num_epochs
+    batch_size = args.batch_size
+    lr = args.lr
+    num_labels = args.num_labels
+    num_hidden_layers = args.num_hidden_layers
+    save_dir = args.save_dir
+    save_every = args.save_every
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     os.makedirs(save_dir, exist_ok=True)
