@@ -18,7 +18,8 @@ from torch.optim import AdamW
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a BERT-CRF model for NER.")
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=420, help="Batch size")
+    parser.add_argument("--max_len", type=int, default=512, help="Max sequence length")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
     parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate for fine-tuning")
     parser.add_argument("--num_labels", type=int, default=9, help="Number of labels")
     parser.add_argument("--num_hidden_layers", type=int, default=8, help="Number of hidden layers in BERT")
@@ -41,6 +42,7 @@ if __name__ == '__main__':
     num_hidden_layers = args.num_hidden_layers
     save_dir = args.save_dir
     save_every = args.save_every
+    max_length = args.max_len
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     os.makedirs(save_dir, exist_ok=True)
@@ -54,11 +56,11 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
-    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer)
+    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer, max_len=max_length)
     # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=18)
     # We MUST use the same label map with Train set!
-    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=train_dataset.label_map)
+    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=train_dataset.label_map, max_len=512)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=18)
 
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -118,8 +120,12 @@ if __name__ == '__main__':
 
                 predictions = model(input_ids, attention_mask)
                 for pred, label, mask in zip(predictions, labels, attention_mask):
+                    # pred: (seq_len, )
+                    # label: (max_len, )
+                    # mask: (max_len, )
                     valid_labels = label[mask == 1]
-                    correct_predictions += (torch.tensor(pred).to(device) == valid_labels).sum().item()
+                    valid_preds = pred if isinstance(model, BERT_CRF) else pred[mask == 1]
+                    correct_predictions += (torch.tensor(valid_preds).to(device) == valid_labels).sum().item()
                     total_predictions += len(valid_labels)
                 p_bar.set_postfix(running_loss=running_loss / len(train_dataloader),
                                   val_loss=val_running_loss / (idx + 1),

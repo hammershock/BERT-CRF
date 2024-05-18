@@ -1,7 +1,6 @@
-import torch
 import torch.nn as nn
 from torchcrf import CRF
-from transformers import BertModel, BertTokenizer, BertConfig
+from transformers import BertModel, BertConfig
 
 
 class BERT_CRF(nn.Module):
@@ -73,12 +72,13 @@ class BERT_Softmax(nn.Module):
             loss = loss_fn(active_logits, active_labels)
             return loss
         else:
-            return predictions
+            return predictions.max(dim=-1)[1]
 
 
 if __name__ == '__main__':
-    model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False)
-    print(model.bert.embeddings.word_embeddings.weight)  # 打印词嵌入参数
+    # model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False)
+    model = BERT_Softmax('bert-base-chinese', num_labels=9, cache_dir="./bert-base-chinese")
+    # print(model.bert.embeddings.word_embeddings.weight)  # 打印词嵌入参数
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
