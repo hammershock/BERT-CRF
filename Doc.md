@@ -27,6 +27,9 @@ dev tags freq: {'O': 2238962, 'B_LOC': 28221, 'I_LOC': 44605, 'B_T': 22789, 'I_T
 单卡L20,显存48GB
 batch size 420，10 epochs
 
+Number of layers: 12
+Vocabulary size: 21128
+Embedding dimension: 768
 
 Why CRF?
 每个标签的出现并非独立
