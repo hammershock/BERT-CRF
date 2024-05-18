@@ -5,34 +5,22 @@ from transformers import BertModel, BertTokenizer, BertConfig
 
 
 class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels, num_hidden_layers=None, cache_dir='./bert-base-chinese',
+    def __init__(self, bert_model_name, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained_embeddings=True,
                  pretrained=True):
         super(BERT_CRF, self).__init__()
-        if pretrained:
+        if pretrained_embeddings:
             config = BertConfig.from_pretrained(bert_model_name, cache_dir=cache_dir)
-            if num_hidden_layers is not None and config.num_hidden_layers != num_hidden_layers:
-                # 发出警告
-                print(
-                    f"Warning: num_hidden_layers ({num_hidden_layers}) does not match the pre-trained model ({config.num_hidden_layers}).")
+            config.num_hidden_layers = num_hidden_layers
 
-                # 设置新的层数
-                config.num_hidden_layers = num_hidden_layers
-
-                # 加载预训练模型以获取词嵌入
-                pretrained_model = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
-                self.bert = BertModel(config)
-
-                # 迁移词嵌入层的权重
-                self.bert.embeddings = pretrained_model.embeddings
-
-                # 初始化其他层的参数
-                self._init_weights(self.bert.encoder)
-            else:
-                self.bert = BertModel.from_pretrained(bert_model_name, config=config, cache_dir=cache_dir)
+            pretrained_model = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+            self.bert = BertModel(config)
+            self.bert.embeddings = pretrained_model.embeddings
+            self._init_weights(self.bert.encoder)
+        elif pretrained:
+            self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
         else:
             config = BertConfig.from_pretrained(bert_model_name, cache_dir=cache_dir)
-            if num_hidden_layers is not None:
-                config.num_hidden_layers = num_hidden_layers
+            assert config.num_hidden_layers == num_hidden_layers  # num hidden layers must be 12
             self.bert = BertModel(config)
 
         self.dropout = nn.Dropout(0.1)

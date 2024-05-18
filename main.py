@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter  # TensorBoard
 import logging  # Logging
 
-from model import BERT_CRF
+from model import BERT_CRF, BERT_Softmax
 from datasets import NERDataset
 
 from torch.optim import AdamW
@@ -44,7 +44,8 @@ if __name__ == '__main__':
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     os.makedirs(save_dir, exist_ok=True)
-    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=True)
+    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained_embeddings=True)
+    # model = BERT_Softmax('bert-base-chinese', num_labels=num_labels, cache_dir="./bert-base-chinese")
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
