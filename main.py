@@ -51,7 +51,8 @@ if __name__ == '__main__':
 
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
-
+    log_dir = os.path.split(log_filename)[0]
+    os.makedirs(log_dir, exist_ok=True)
     if args.model_type == "bert_crf":
         model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=pretrained)
     elif args.model_type == "bert_softmax":
