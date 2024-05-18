@@ -18,8 +18,8 @@ from torch.optim import AdamW
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a BERT-CRF model for NER.")
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of training epochs")
-    parser.add_argument("--max_len", type=int, default=512, help="Max sequence length")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
+    parser.add_argument("--max_len", type=int, default=128, help="Max sequence length")
+    parser.add_argument("--batch_size", type=int, default=420, help="Batch size")
     parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate for fine-tuning")
     parser.add_argument("--num_labels", type=int, default=9, help="Number of labels")
     parser.add_argument("--pretrained", type=int, help="Use pre-trained model embeddings, 0 for RandomInit, 1 for pretrained embeddings, 2 for bert pretrained weights")
