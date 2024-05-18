@@ -4,23 +4,20 @@ from transformers import BertModel, BertConfig
 
 
 class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained_embeddings=False,
-                 pretrained=True):
+    def __init__(self, bert_model_name, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained=0):
         super(BERT_CRF, self).__init__()
-        if pretrained_embeddings:
+        if pretrained in [0, 1]:
             config = BertConfig.from_pretrained(bert_model_name, cache_dir=cache_dir)
             config.num_hidden_layers = num_hidden_layers
-
-            pretrained_model = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+            # random Initialize
             self.bert = BertModel(config)
-            self.bert.embeddings = pretrained_model.embeddings
-            self._init_weights(self.bert.encoder)
-        elif pretrained:
+            if pretrained == 1:  # use pretrained embeddings
+                pretrained_model = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+                self.bert.embeddings = pretrained_model.embeddings
+                self._init_weights(self.bert.encoder)
+        elif pretrained == 2:
+            assert num_hidden_layers == 12
             self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
-        else:
-            config = BertConfig.from_pretrained(bert_model_name, cache_dir=cache_dir)
-            assert config.num_hidden_layers == num_hidden_layers  # num hidden layers must be 12
-            self.bert = BertModel(config)
 
         self.dropout = nn.Dropout(0.1)
         self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)

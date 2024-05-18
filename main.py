@@ -22,9 +22,12 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
     parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate for fine-tuning")
     parser.add_argument("--num_labels", type=int, default=9, help="Number of labels")
-    parser.add_argument("--num_hidden_layers", type=int, default=8, help="Number of hidden layers in BERT")
+    parser.add_argument("--pretrained", type=int, help="Use pre-trained model embeddings, 0 for RandomInit, 1 for pretrained embeddings, 2 for bert pretrained weights")
+    parser.add_argument("--num_hidden_layers", type=int, default=12, help="Number of hidden layers in BERT")
     parser.add_argument("--save_dir", type=str, default="./models", help="Directory to save models")
     parser.add_argument("--save_every", type=int, default=1, help="Save model every N epochs")
+    parser.add_argument("--log_path", type=str, default=f"./logs/train.log", help="Directory to save logs")
+    parser.add_argument("--model_type", type=str, default="bert_crf", help="Save model every N epochs")
     return parser.parse_args()
 
 
@@ -40,14 +43,22 @@ if __name__ == '__main__':
     lr = args.lr
     num_labels = args.num_labels
     num_hidden_layers = args.num_hidden_layers
-    save_dir = args.save_dir
+    # save_dir = args.save_dir
     save_every = args.save_every
     max_length = args.max_len
+    pretrained = args.pretrained
+    log_filename = args.log_path
+
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
-    os.makedirs(save_dir, exist_ok=True)
-    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained_embeddings=True)
-    # model = BERT_Softmax('bert-base-chinese', num_labels=num_labels, cache_dir="./bert-base-chinese")
+
+    if args.model_type == "bert_crf":
+        model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=pretrained)
+    elif args.model_type == "bert_softmax":
+        model = BERT_Softmax('bert-base-chinese', num_labels=num_labels, cache_dir="./bert-base-chinese")
+    else:
+        raise ValueError("Invalid Model type, Model type must be either 'bert_crf' or 'bert_softmax'")
+
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
@@ -55,7 +66,8 @@ if __name__ == '__main__':
     # Move model and tensors to CUDA (if available)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
-
+    save_dir = f'./models/type{args.model_type}_layers_{num_hidden_layers}_pretrained{pretrained}'
+    os.makedirs(save_dir, exist_ok=True)
     train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer, max_len=max_length)
     # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=18)
@@ -64,10 +76,9 @@ if __name__ == '__main__':
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=18)
 
     optimizer = AdamW(model.parameters(), lr=lr)
-
     # TensorBoard and Logging Setup
     writer = SummaryWriter(log_dir=f'../../tf-logs/ner_experiment_l{num_hidden_layers}')  # default logging dir of auto-dl
-    logging.basicConfig(filename=f'training_l{num_hidden_layers}.log', level=logging.INFO)
+    logging.basicConfig(filename=log_filename, level=logging.INFO)
 
     val_accuracy = None
     val_loss = None
@@ -78,19 +89,16 @@ if __name__ == '__main__':
         p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}', total=len(train_dataloader))
         model.train()
         for idx, batch in p_bar:  # use tqdm to show the progress
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
-
+            batch = {k: v.to(device) for k, v in batch.items()}
             optimizer.zero_grad()
-            loss = model(input_ids, attention_mask, labels=labels)
+            loss = model(**batch)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
             # Save the model every 1/4 epoch
             p_bar.set_postfix(running_loss=running_loss / (idx + 1), val_loss=val_loss, val_acc=val_accuracy)
         if epoch % save_every == 0:
-            save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}_layers{num_hidden_layers}.pth')
+            save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
             torch.save(model.state_dict(), save_path)
 
         epoch_loss = running_loss / len(train_dataloader)
@@ -111,18 +119,12 @@ if __name__ == '__main__':
         p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}', total=len(val_dataloader))
         with torch.no_grad():
             for idx, batch in p_bar:
-                input_ids = batch['input_ids'].to(device)
-                attention_mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
-
-                loss = model(input_ids, attention_mask, labels=labels)
+                batch = {k: v.to(device) for k, v in batch.items()}
+                loss = model(**batch)
                 val_running_loss += loss.item()
 
-                predictions = model(input_ids, attention_mask)
-                for pred, label, mask in zip(predictions, labels, attention_mask):
-                    # pred: (seq_len, )
-                    # label: (max_len, )
-                    # mask: (max_len, )
+                predictions = model(batch["input_ids"], batch["attention_mask"])
+                for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
                     valid_labels = label[mask == 1]
                     valid_preds = pred if isinstance(model, BERT_CRF) else pred[mask == 1]
                     correct_predictions += (torch.tensor(valid_preds).to(device) == valid_labels).sum().item()
