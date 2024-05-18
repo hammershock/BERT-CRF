@@ -3,7 +3,7 @@ from itertools import product
 
 
 def run_experiments():
-    num_hidden_layers_list = [4, 6, 8, 10]
+    num_hidden_layers_list = [10, 8, 6, 4]
     pretrained_list = [0, 1]
     model_type = "bert_crf"
 
