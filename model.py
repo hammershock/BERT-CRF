@@ -5,7 +5,7 @@ from transformers import BertModel, BertTokenizer, BertConfig
 
 
 class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained_embeddings=True,
+    def __init__(self, bert_model_name, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained_embeddings=False,
                  pretrained=True):
         super(BERT_CRF, self).__init__()
         if pretrained_embeddings:
