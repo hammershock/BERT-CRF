@@ -18,11 +18,12 @@ from torch.optim import AdamW
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a BERT-CRF model for NER.")
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of training epochs")
-    parser.add_argument("--max_len", type=int, default=128, help="Max sequence length")
-    parser.add_argument("--batch_size", type=int, default=420, help="Batch size")
+    parser.add_argument("--max_len", type=int, default=300, help="Max sequence length")
+    parser.add_argument("--batch_size", type=int, default=150, help="Batch size")
     parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate for fine-tuning")
+    parser.add_argument("--lr_crf", type=float, default=5e-3, help="Learning rate of CRF")
     parser.add_argument("--num_labels", type=int, default=9, help="Number of labels")
-    parser.add_argument("--pretrained", type=int, help="Use pre-trained model embeddings, 0 for RandomInit, 1 for pretrained embeddings, 2 for bert pretrained weights")
+    parser.add_argument("--pretrained", type=int, default=2, help="Use pre-trained model embeddings, 0 for RandomInit, 1 for pretrained embeddings, 2 for bert pretrained weights")
     parser.add_argument("--num_hidden_layers", type=int, default=12, help="Number of hidden layers in BERT")
     parser.add_argument("--save_dir", type=str, default="./models", help="Directory to save models")
     parser.add_argument("--save_every", type=int, default=1, help="Save model every N epochs")
@@ -48,6 +49,7 @@ if __name__ == '__main__':
     max_length = args.max_len
     pretrained = args.pretrained
     log_filename = args.log_path
+    lr_crf = args.lr_crf
 
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
@@ -76,7 +78,17 @@ if __name__ == '__main__':
     val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=train_dataset.label_map, max_len=512)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=18)
 
-    optimizer = AdamW(model.parameters(), lr=lr)
+    if args.model_type == "bert_crf":
+        bert_params = list(model.bert.parameters()) + list(model.fc.parameters())
+        crf_params = list(model.crf.parameters())
+
+        optimizer = AdamW([
+            {'params': bert_params, 'lr': lr},
+            {'params': crf_params, 'lr': lr_crf}
+        ])
+    else:
+        optimizer = AdamW(model.parameters(), lr=lr)
+
     # TensorBoard and Logging Setup
     writer = SummaryWriter(log_dir=f'../../tf-logs/ner_experiment_l{num_hidden_layers}')  # default logging dir of auto-dl
     logging.basicConfig(filename=log_filename, level=logging.INFO)
