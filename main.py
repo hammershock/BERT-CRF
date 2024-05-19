@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 from tqdm import tqdm
 from transformers import BertTokenizer
@@ -71,11 +72,13 @@ if __name__ == '__main__':
     model.to(device)
     save_dir = f'./models/type{args.model_type}_layers_{num_hidden_layers}_pretrained{pretrained}'
     os.makedirs(save_dir, exist_ok=True)
-    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer, max_len=max_length)
+    # label_map = {'B_ORG': 0, 'O': 1, 'B_T': 2, 'I_LOC': 3, 'I_PER': 4, 'I_ORG': 5, 'B_PER': 6, 'I_T': 7, 'B_LOC': 8}
+    label_map = {'I_T': 0, 'I_PER': 1, 'B_LOC': 2, 'B_PER': 3, 'B_T': 4, 'B_ORG': 5, 'I_LOC': 6, 'O': 7, 'I_ORG': 8}
+    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer, max_len=max_length, label_map=label_map)
     # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=18)
     # We MUST use the same label map with Train set!
-    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=train_dataset.label_map, max_len=512)
+    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=label_map, max_len=512)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=18)
 
     if args.model_type == "bert_crf":

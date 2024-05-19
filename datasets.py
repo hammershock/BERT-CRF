@@ -16,7 +16,7 @@ class NERDataset(Dataset):
             return [line.strip().split() for line in f.readlines()]
 
     def create_label_map(self):
-        labels = set(tag for tag_list in self.tags for tag in tag_list)
+        labels = sorted(set(tag for tag_list in self.tags for tag in tag_list))
         return {label: i for i, label in enumerate(labels)}
 
     def calculate_label_frequencies(self):
