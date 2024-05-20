@@ -6,15 +6,15 @@ import torch
 from tqdm import tqdm
 from transformers import BertTokenizer
 
-from src.model import BERT_CRF
+from model import BERT_CRF
 
 CACHE_DIR = '../bert-base-chinese'
-file_path = "test.txt"
-out_path = "./test_TAG.txt"
-model_path = "../models/model_epoch_2.pth"
+file_path = "../data/test.txt"
+out_path = "../data/test_TAG.txt"
+model_path = "../models/model_epoch_1.pth"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False, cache_dir=CACHE_DIR).to(device)
+model = BERT_CRF(CACHE_DIR, num_labels=9, pretrained=False, cache_dir=CACHE_DIR).to(device)
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 tokenizer = BertTokenizer.from_pretrained(CACHE_DIR, cache_dir=CACHE_DIR)  # load the pretrained model
@@ -23,6 +23,23 @@ idx2label = {idx: label for label, idx in label_map.items()}
 
 
 max_len = 512
+
+
+def inference(model, tokenizer, text):
+    tokens = [tokenizer.tokenize(char)[0] for char in text]
+    tokens = ['[CLS]'] + tokens + ['[SEP]']
+
+    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+    input_ids = torch.tensor(input_ids).unsqueeze(0).to(device)
+    attention_mask = torch.ones(input_ids.shape, dtype=torch.long).to(device)
+
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask)[0]
+
+    tags = [idx2label[idx] for idx in outputs[1:-1]]
+    return tags
+
 
 with open(file_path, 'r', encoding='utf-8') as f:
     total_length = sum(1 for line in f)
@@ -37,37 +54,16 @@ with open(file_path, 'r', encoding='utf-8') as f, open(out_path, 'w', encoding='
         if len(line_text) > max_len - 2:
             all_tags = []
             for sub_line in line_text.split('。'):
-                tokens = [tokenizer.tokenize(char)[0] for char in sub_line]
-                tokens = ['[CLS]'] + tokens + ['[SEP]']
-
-                input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
-                input_ids = torch.tensor(input_ids).unsqueeze(0).to(device)
-                attention_mask = torch.ones(input_ids.shape, dtype=torch.long).to(device)
-
-                with torch.no_grad():
-                    outputs = model(input_ids, attention_mask)[0]
-
-                tags = [idx2label[idx] for idx in outputs[1:-1]]
+                assert len(sub_line) < 512 - 2
+                tags = inference(model, tokenizer, sub_line)
                 all_tags.extend(tags)
                 all_tags.append('O')
-
-            line_out = " ".join(all_tags[:-1]) + '\n'
-            f_out.write(line_out)
-
+            all_tags.pop(-1)
+            line_out = " ".join(all_tags) + '\n'
         else:
-            tokens = [tokenizer.tokenize(char)[0] for char in file_parts]
-            tokens = ['[CLS]'] + tokens + ['[SEP]']
+            all_tags = inference(model, tokenizer, line_text)
+            line_out = " ".join(all_tags) + '\n'
 
-            input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
-            input_ids = torch.tensor(input_ids).unsqueeze(0).to(device)
-            attention_mask = torch.ones(input_ids.shape, dtype=torch.long).to(device)
-
-            with torch.no_grad():
-                outputs = model(input_ids, attention_mask)[0]
-
-            tags = [idx2label[idx] for idx in outputs[1:-1]]
-            line_out = " ".join(tags) + '\n'
-            f_out.write(line_out)
+        assert len(file_parts) == len(all_tags)
+        f_out.write(line_out)
 

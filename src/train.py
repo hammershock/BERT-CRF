@@ -35,9 +35,9 @@ def parse_args():
     parser.add_argument("--num_labels", type=int, default=9, help="Number of labels")
     parser.add_argument("--pretrained", type=int, default=2, help="Use pre-trained model embeddings, 0 for RandomInit, 1 for pretrained embeddings, 2 for bert pretrained weights")
     parser.add_argument("--num_hidden_layers", type=int, default=12, help="Number of hidden layers in BERT")
-    parser.add_argument("--save_dir", type=str, default="./models", help="Directory to save models")
+    parser.add_argument("--save_dir", type=str, default="../models", help="Directory to save models")
     parser.add_argument("--save_every", type=int, default=1, help="Save model every N epochs")
-    parser.add_argument("--log_path", type=str, default=f"./logs/train.log", help="Directory to save logs")
+    parser.add_argument("--log_path", type=str, default=f"../logs/train.log", help="Directory to save logs")
     parser.add_argument("--model_type", type=str, default="bert_crf", help="Save model every N epochs")
     return parser.parse_args()
 
@@ -94,16 +94,13 @@ def validate(model, val_dataloader, device, epoch, num_epochs):
 if __name__ == '__main__':
     args = parse_args()
 
-    # 创建保存模型的目录
-    os.makedirs(args.save_dir, exist_ok=True)
-
     # ====== Training Hyperparameters ======
     num_epochs = args.num_epochs
     batch_size = args.batch_size
     lr = args.lr
     num_labels = args.num_labels
     num_hidden_layers = args.num_hidden_layers
-    # save_dir = args.save_dir
+    save_dir = args.save_dir
     save_every = args.save_every
     max_length = args.max_len
     pretrained = args.pretrained
@@ -114,6 +111,7 @@ if __name__ == '__main__':
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     log_dir = os.path.split(log_filename)[0]
     os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(args.save_dir, exist_ok=True)
 
     if args.model_type == "bert_crf":
         model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=pretrained)
