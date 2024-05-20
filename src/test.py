@@ -6,20 +6,18 @@ import torch
 from tqdm import tqdm
 from transformers import BertTokenizer
 
-from model import BERT_CRF
+from src.model import BERT_CRF
 
-file_path = "./data/test.txt"
-out_path = "./data/test_TAG.txt"
-model_path = "./models/typebert_crf_layers_12_pretrained2/model_epoch_3.pth"
-
-tokenizer = BertTokenizer.from_pretrained('bert-base-chinese',
-                                          cache_dir="./bert-base-chinese")  # load the pretrained model
+CACHE_DIR = '../bert-base-chinese'
+file_path = "test.txt"
+out_path = "./test_TAG.txt"
+model_path = "../models/model_epoch_2.pth"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False).to(device)
+model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False, cache_dir=CACHE_DIR).to(device)
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
-tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
+tokenizer = BertTokenizer.from_pretrained(CACHE_DIR, cache_dir=CACHE_DIR)  # load the pretrained model
 label_map = {'I_T': 8, 'I_PER': 7, 'B_LOC': 2, 'B_PER': 0, 'B_T': 3, 'B_ORG': 6, 'I_LOC': 4, 'O': 5, 'I_ORG': 1}
 idx2label = {idx: label for label, idx in label_map.items()}
 
@@ -54,7 +52,7 @@ with open(file_path, 'r', encoding='utf-8') as f, open(out_path, 'w', encoding='
                 all_tags.extend(tags)
                 all_tags.append('O')
 
-            line_out = " ".join(tags[:-1]) + '\n'
+            line_out = " ".join(all_tags[:-1]) + '\n'
             f_out.write(line_out)
 
         else:
@@ -72,3 +70,4 @@ with open(file_path, 'r', encoding='utf-8') as f, open(out_path, 'w', encoding='
             tags = [idx2label[idx] for idx in outputs[1:-1]]
             line_out = " ".join(tags) + '\n'
             f_out.write(line_out)
+

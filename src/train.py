@@ -42,6 +42,55 @@ def parse_args():
     return parser.parse_args()
 
 
+def train_epoch(model, train_dataloader, optimizer, device, epoch, num_epochs, save_dir, save_every=1):
+    running_loss = 0.0
+    p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}', total=len(train_dataloader))
+    model.train()
+    for idx, batch in p_bar:  # use tqdm to show the progress
+        batch = {k: v.to(device) for k, v in batch.items()}
+        optimizer.zero_grad()
+        loss = model(**batch)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+        # Save the model every 1/4 epoch
+        p_bar.set_postfix(running_loss=running_loss / (idx + 1))
+    if epoch % save_every == 0:
+        save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
+        torch.save(model.state_dict(), save_path)
+
+    epoch_loss = running_loss / len(train_dataloader)
+    return epoch_loss
+
+
+def validate(model, val_dataloader, device, epoch, num_epochs):
+    # Validation loop
+    model.eval()
+    val_running_loss = 0.0
+    correct_predictions = 0
+    total_predictions = 0
+
+    p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}', total=len(val_dataloader))
+    with torch.no_grad():
+        for idx, batch in p_bar:
+            batch = {k: v.to(device) for k, v in batch.items()}
+            loss = model(**batch)
+            val_running_loss += loss.item()
+
+            predictions = model(batch["input_ids"], batch["attention_mask"])
+            for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
+                valid_labels = label[mask == 1]
+                valid_preds = pred if isinstance(model, BERT_CRF) else pred[mask == 1]
+                correct_predictions += (torch.tensor(valid_preds).to(device) == valid_labels).sum().item()
+                total_predictions += len(valid_labels)
+            p_bar.set_postfix(val_loss=val_running_loss / (idx + 1),
+                              current_accuracy=correct_predictions / total_predictions)
+
+    val_loss = val_running_loss / len(val_dataloader)
+    val_accuracy = correct_predictions / total_predictions
+    return val_loss, val_accuracy
+
+
 if __name__ == '__main__':
     args = parse_args()
 
@@ -65,6 +114,7 @@ if __name__ == '__main__':
     tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', cache_dir="./bert-base-chinese")  # load the pretrained model
     log_dir = os.path.split(log_filename)[0]
     os.makedirs(log_dir, exist_ok=True)
+
     if args.model_type == "bert_crf":
         model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=pretrained)
     elif args.model_type == "bert_softmax":
@@ -76,98 +126,35 @@ if __name__ == '__main__':
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
     print(f'Embedding dimension: {model.bert.config.hidden_size}')
 
+    model = BERT_CRF('bert-base-chinese', num_labels=num_labels, num_hidden_layers=num_hidden_layers, pretrained=pretrained)
     # Move model and tensors to CUDA (if available)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     save_dir = f'./models/type{args.model_type}_layers_{num_hidden_layers}_pretrained{pretrained}'
     os.makedirs(save_dir, exist_ok=True)
-    # label_map = {'B_ORG': 0, 'O': 1, 'B_T': 2, 'I_LOC': 3, 'I_PER': 4, 'I_ORG': 5, 'B_PER': 6, 'I_T': 7, 'B_LOC': 8}
+
     label_map = {'I_T': 8, 'I_PER': 7, 'B_LOC': 2, 'B_PER': 0, 'B_T': 3, 'B_ORG': 6, 'I_LOC': 4, 'O': 5, 'I_ORG': 1}
+    train_set = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer, max_len=max_length, label_map=label_map)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=18)
+    val_set = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=label_map, max_len=512)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=18)    # We MUST use the same label map with Train set!
 
-    train_dataset = NERDataset('./data/train.txt', './data/train_TAG.txt', tokenizer, max_len=max_length, label_map=label_map)
-    # train_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer)
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=18)
-    # We MUST use the same label map with Train set!
-    val_dataset = NERDataset('./data/dev.txt', './data/dev_TAG.txt', tokenizer, label_map=label_map, max_len=512)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=18)
-
-    if args.model_type == "bert_crf":
-        bert_params = list(model.bert.parameters()) + list(model.fc.parameters())
-        crf_params = list(model.crf.parameters())
-
-        optimizer = AdamW([
-            {'params': bert_params, 'lr': lr},
-            {'params': crf_params, 'lr': lr_crf}
-        ])
-    else:
-        optimizer = AdamW(model.parameters(), lr=lr)
+    optimizer = AdamW([
+        {'params': list(model.bert.parameters()) + list(model.fc.parameters()), 'lr': lr},
+        {'params': list(model.crf.parameters()), 'lr': lr_crf}
+    ]) if args.model_type == "bert_crf" else AdamW(model.parameters(), lr=lr)
 
     # TensorBoard and Logging Setup
-    writer = SummaryWriter(log_dir=f'../../tf-logs/ner_experiment_l{num_hidden_layers}')  # default logging dir of auto-dl
     logging.basicConfig(filename=log_filename, level=logging.INFO)
-
-    val_accuracy = None
-    val_loss = None
 
     print('Model loaded successfully')
     for epoch in range(num_epochs):  # Number of epochs can be adjusted
-        running_loss = 0.0
-        p_bar = tqdm(enumerate(train_dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}', total=len(train_dataloader))
-        model.train()
-        for idx, batch in p_bar:  # use tqdm to show the progress
-            batch = {k: v.to(device) for k, v in batch.items()}
-            optimizer.zero_grad()
-            loss = model(**batch)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-            # Save the model every 1/4 epoch
-            p_bar.set_postfix(running_loss=running_loss / (idx + 1), val_loss=val_loss, val_acc=val_accuracy)
-        if epoch % save_every == 0:
-            save_path = os.path.join(save_dir, f'model_epoch_{epoch + 1}.pth')
-            torch.save(model.state_dict(), save_path)
+        epoch_loss = train_epoch(model, train_loader, optimizer, device, epoch, num_epochs, save_dir, save_every)
 
-        epoch_loss = running_loss / len(train_dataloader)
-        print(f"Epoch {epoch + 1}, Training Loss: {epoch_loss}")
+        # Record Training Results
+        logging.info(f'Epoch: {epoch + 1}, Training Loss: {epoch_loss}')  # Log the training loss
 
-        # Send the training loss after epoch to TensorBoard
-        writer.add_scalar('Training Loss', epoch_loss, epoch)
+        val_loss, val_accuracy = validate(model, val_loader, device, epoch, num_epochs)
 
-        # Log the training loss
-        logging.info(f'Epoch: {epoch + 1}, Training Loss: {epoch_loss}')
-
-        # Validation loop
-        model.eval()
-        val_running_loss = 0.0
-        correct_predictions = 0
-        total_predictions = 0
-
-        p_bar = tqdm(enumerate(val_dataloader), desc=f'Validation {epoch + 1}/{num_epochs}', total=len(val_dataloader))
-        with torch.no_grad():
-            for idx, batch in p_bar:
-                batch = {k: v.to(device) for k, v in batch.items()}
-                loss = model(**batch)
-                val_running_loss += loss.item()
-
-                predictions = model(batch["input_ids"], batch["attention_mask"])
-                for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
-                    valid_labels = label[mask == 1]
-                    valid_preds = pred if isinstance(model, BERT_CRF) else pred[mask == 1]
-                    correct_predictions += (torch.tensor(valid_preds).to(device) == valid_labels).sum().item()
-                    total_predictions += len(valid_labels)
-                p_bar.set_postfix(running_loss=running_loss / len(train_dataloader),
-                                  val_loss=val_running_loss / (idx + 1),
-                                  current_accuracy=correct_predictions / total_predictions)
-
-        val_loss = val_running_loss / len(val_dataloader)
-        val_accuracy = correct_predictions / total_predictions
-        print(f"Epoch {epoch + 1}, Validation Loss: {val_loss}, Validation Accuracy: {val_accuracy}")
-
-        # Send the validation loss and accuracy to TensorBoard
-        writer.add_scalar('Validation Loss', val_loss, epoch)
-        writer.add_scalar('Validation Accuracy', val_accuracy, epoch)
-
-        # Log the validation loss and accuracy
+        # Record Validation Results
         logging.info(f'Epoch: {epoch + 1}, Validation Loss: {val_loss}, Validation Accuracy: {val_accuracy}')
-
-    writer.close()
