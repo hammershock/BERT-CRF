@@ -11,7 +11,7 @@ from model import BERT_CRF
 CACHE_DIR = '../bert-base-chinese'
 file_path = "../data/test.txt"
 out_path = "../data/test_TAG.txt"
-model_path = "../models/model_epoch_1.pth"
+model_path = "../models/model_epoch_5.pth"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = BERT_CRF(CACHE_DIR, num_labels=9, pretrained=False, cache_dir=CACHE_DIR).to(device)

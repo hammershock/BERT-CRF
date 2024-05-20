@@ -4,14 +4,16 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 
 file_path = "../data/test.txt"
-tag_path = "../data/test_TAG.txt"
+tag_path = "../2021213368.txt"
 
 # 定义只匹配中文字符的正则表达式
 chinese_char_pattern = re.compile(r'[\u4e00-\u9fa5]')
 
+
 def filter_chinese_chars(s):
     """只保留字符串中的中文字符"""
     return ''.join(ch for ch in s if chinese_char_pattern.match(ch))
+
 
 # 读取文件并提取实体
 with open(file_path, 'r') as f, open(tag_path, 'r') as g:
@@ -33,6 +35,7 @@ with open(file_path, 'r') as f, open(tag_path, 'r') as g:
                 entities[entity_type][-1].append(char)
 
     entities = {k: ["".join(item) for item in v] for k, v in entities.items()}
+    entities['PER'] = [per for per in entities['PER'] if per not in {"习近平", "毛泽东"}]  # Guess Why?
     # 过滤非中文字符并统计词频
     word_counts = {k: Counter(filter_chinese_chars(string) for string in v if filter_chinese_chars(string)) for k, v in entities.items()}
 
