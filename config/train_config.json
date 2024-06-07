@@ -1,17 +1,17 @@
 {
-  "train_path": "./data/train.txt",
-  "train_label_path": "./data/train_TAG.txt",
-  "val_path": "./data/dev.txt",
-  "val_label_path": "./data/dev_TAG.txt",
+  "train_path": "./data/text.txt",
+  "train_label_path": "./data/label.txt",
+  "val_path": "./data/text.txt",
+  "val_label_path": "./data/label.txt",
   "num_epochs": 10,
   "max_seq_len": 256,
-  "batch_size": 150,
+  "batch_size": 130,
   "lr": 5e-5,
   "lr_crf": 5e-3,
-  "pretrained": 2,
   "num_hidden_layers": 12,
   "save_path": "./models/my_model.pth",
   "save_every": 1,
   "log_path": "./logs/train.log",
+  "device": "cuda",
   "num_workers": 14
 }

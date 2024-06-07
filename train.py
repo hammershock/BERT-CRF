@@ -58,8 +58,9 @@ def validate(model, val_dataloader, optimizer, device) -> Iterator[Dict[str, flo
             yield {"current_validation_loss": val_running_loss / (idx + 1), "current_accuracy": current_accuracy}
 
 
-def tqdm_iteration(desc, model, dataloader, optimizer, device):
-    p_bar = tqdm(train_epoch(model, dataloader, optimizer, device), desc=desc, total=len(train_loader))
+def tqdm_iteration(desc, model, dataloader, optimizer, device, train=True):
+    func = train_epoch if train else validate
+    p_bar = tqdm(func(model, dataloader, optimizer, device), desc=desc, total=len(train_loader))
     for results in p_bar:
         p_bar.set_postfix(**results)
     logging.info(f'Epoch: {epoch + 1} ' + " ".join(f"{k}: {v}" for k, v in results.items()))  # Log the training loss
