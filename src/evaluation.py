@@ -7,7 +7,8 @@ from torch.utils.data import DataLoader
 from transformers import BertTokenizer
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from datasets import NERDataset
+from ner_dataset import NERDataset
+
 from model import BERT_CRF
 from tqdm import tqdm
 

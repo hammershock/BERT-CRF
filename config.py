@@ -1,0 +1,41 @@
+import json
+import os
+
+
+class _BaseConfig:
+    def __repr__(self):
+        return json.dumps(self.__dict__)
+
+    def dump_to_json(self, json_path="./config.json"):
+        if os.path.exists(json_path):  # avoid overwrite
+            raise FileExistsError
+        with open(json_path, 'w') as f:
+            json.dump(self.__dict__, f, indent=4)
+        print(f"Configuration dumped to {json_path}")
+
+    @staticmethod
+    def from_json_file(json_file) -> 'TrainerConfig':
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        return TrainerConfig(**data)
+
+
+class TrainerConfig(_BaseConfig):
+    def __init__(self, *, train_path, train_label_path, val_path, val_label_path, device,
+                 num_epochs: int, max_seq_len: int, batch_size: int, lr: float, lr_crf: float,
+                 num_hidden_layers: int, save_path: str, save_every: int, log_path: str, num_workers: int):
+        self.train_path = train_path
+        self.train_label_path = train_label_path
+        self.val_path = val_path
+        self.val_label_path = val_label_path
+        self.device = device
+        self.num_epochs = num_epochs
+        self.max_seq_len = max_seq_len
+        self.batch_size = batch_size
+        self.lr = lr
+        self.lr_crf = lr_crf
+        self.num_hidden_layers = num_hidden_layers
+        self.save_path = save_path
+        self.save_every = save_every
+        self.log_path = log_path
+        self.num_workers = num_workers
