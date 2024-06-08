@@ -111,8 +111,9 @@ def make_ner_dataset(max_seq_len, file_path, label_path, tokenizer, label_map, s
             input_tokens = []
             label_ids = []
             for part1, part2 in zip(line1.strip().split(), line2.strip().split()):
-                input_tokens.append(tokenizer.vocab[part1])
-                label_ids.append(label_map[part2])
+                tokens = tokenizer.tokenize(part1)
+                input_tokens.extend(tokens)
+                label_ids.extend([label_map[part2]] * len(tokens))
 
             input_tokens = ["[CLS]"] + input_tokens + ["[SEP]"]
             input_ids = tokenizer.convert_tokens_to_ids(input_tokens)
