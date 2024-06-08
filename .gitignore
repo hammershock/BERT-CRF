@@ -8,3 +8,5 @@
 /bert-base-chinese_all.zip
 /models/
 /model_epoch_2.pth
+/.cache/
+__pycache__/

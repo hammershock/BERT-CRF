@@ -1,6 +1,8 @@
 import json
 import os
 
+from prettytable import PrettyTable
+
 
 class _BaseConfig:
     def __repr__(self):
@@ -39,3 +41,12 @@ class TrainerConfig(_BaseConfig):
         self.save_every = save_every
         self.log_path = log_path
         self.num_workers = num_workers
+
+    def print_config(self):
+        table = PrettyTable()
+        table.field_names = ["Parameter", "Value"]
+
+        for key, value in self.__dict__.items():
+            table.add_row([key, value])
+
+        print(table)

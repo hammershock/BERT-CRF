@@ -4,20 +4,20 @@ from transformers import BertModel, BertConfig
 
 
 class BERT_CRF(nn.Module):
-    def __init__(self, bert_model_name, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained=0):
+    def __init__(self, bert_model_path, num_labels, num_hidden_layers=12, cache_dir='./bert-base-chinese', pretrained=0):
         super(BERT_CRF, self).__init__()
         if pretrained in [0, 1]:
-            config = BertConfig.from_pretrained(bert_model_name, cache_dir=cache_dir)
+            config = BertConfig.from_pretrained(bert_model_path, cache_dir=cache_dir)
             config.num_hidden_layers = num_hidden_layers
             # random Initialize
             self.bert = BertModel(config)
             if pretrained == 1:  # use pretrained embeddings
-                pretrained_model = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+                pretrained_model = BertModel.from_pretrained(bert_model_path, cache_dir=cache_dir)
                 self.bert.embeddings = pretrained_model.embeddings
                 self._init_weights(self.bert.encoder)
         elif pretrained == 2:
             assert num_hidden_layers == 12
-            self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
+            self.bert = BertModel.from_pretrained(bert_model_path, cache_dir=cache_dir)
 
         self.dropout = nn.Dropout(0.1)
         self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
@@ -45,36 +45,9 @@ class BERT_CRF(nn.Module):
             return prediction
 
 
-class BERT_Softmax(nn.Module):
-    def __init__(self, bert_model_name, num_labels, cache_dir='./bert-base-chinese'):
-        super(BERT_Softmax, self).__init__()
-        self.bert = BertModel.from_pretrained(bert_model_name, cache_dir=cache_dir)
-        self.dropout = nn.Dropout(0.1)
-        self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
-        self.softmax = nn.Softmax(dim=-1)
-
-    def forward(self, input_ids, attention_mask, labels=None):
-        outputs = self.bert(input_ids, attention_mask=attention_mask)
-        sequence_output = self.dropout(outputs[0])
-        logits = self.fc(sequence_output)
-        predictions = self.softmax(logits)
-
-        if labels is not None:
-            loss_fn = nn.CrossEntropyLoss()
-            # CrossEntropyLoss expects inputs of shape (N, C) and targets of shape (N)
-            # Flatten the inputs and targets
-            active_loss = attention_mask.view(-1) == 1
-            active_logits = logits.view(-1, logits.shape[-1])[active_loss]
-            active_labels = labels.view(-1)[active_loss]
-            loss = loss_fn(active_logits, active_labels)
-            return loss
-        else:
-            return predictions.max(dim=-1)[1]
-
-
 if __name__ == '__main__':
-    # model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False)
-    model = BERT_Softmax('bert-base-chinese', num_labels=9, cache_dir="./bert-base-chinese")
+    model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=False)
+    # model = BERT_Softmax('bert-base-chinese', num_labels=9, cache_dir="./bert-base-chinese")
     # print(model.bert.embeddings.word_embeddings.weight)  # 打印词嵌入参数
     print(f'Number of layers: {model.bert.config.num_hidden_layers}')
     print(f'Vocabulary size: {model.bert.config.vocab_size}')
