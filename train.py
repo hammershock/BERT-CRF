@@ -119,9 +119,9 @@ if __name__ == '__main__':
                      pretrained=2).to(config.device)
 
     train_set = make_ner_dataset(config.max_seq_len, config.train_path, config.train_label_path, tokenizer, label_vocab,
-                                 special_label_id=label_vocab["O"])
+                                 special_label_id=label_vocab["O"], overlap=config.overlap)
     val_set = make_ner_dataset(config.max_seq_len, config.val_path, config.val_label_path, tokenizer, label_vocab,
-                               special_label_id=label_vocab["O"])
+                               special_label_id=label_vocab["O"], overlap=config.overlap)
 
     # prepare for training...
     train_loader = DataLoader(train_set, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
