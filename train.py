@@ -9,7 +9,6 @@
 """
 import logging
 import os.path
-from collections import Counter
 from typing import Dict, Iterator
 
 import numpy as np

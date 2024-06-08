@@ -33,7 +33,7 @@ class TrainerConfig(_BaseConfig):
         self.device = device
         self.num_epochs = num_epochs
         self.max_seq_len = max_seq_len
-        self.overlap = overlap,
+        self.overlap = overlap
         self.batch_size = batch_size
         self.lr = lr
         self.lr_crf = lr_crf
