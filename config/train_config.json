@@ -4,6 +4,7 @@
   "val_path": "./data/dev.txt",
   "val_label_path": "./data/dev_TAG.txt",
   "bert_model_path": "./bert-base-chinese",
+  "special_token_type": "O",
   "num_epochs": 50,
   "max_seq_len": 128,
   "overlap": 0,
