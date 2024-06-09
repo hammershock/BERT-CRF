@@ -23,13 +23,14 @@ class _BaseConfig:
 
 
 class TrainerConfig(_BaseConfig):
-    def __init__(self, *, train_path, train_label_path, val_path, val_label_path, device,
+    def __init__(self, *, train_path, train_label_path, val_path, val_label_path, bert_model_path, device,
                  num_epochs: int, max_seq_len: int, overlap: int, batch_size: int, lr: float, lr_crf: float,
                  num_hidden_layers: int, save_path: str, save_every: int, log_path: str, num_workers: int):
         self.train_path = train_path
         self.train_label_path = train_label_path
         self.val_path = val_path
         self.val_label_path = val_label_path
+        self.bert_model_path = bert_model_path
         self.device = device
         self.num_epochs = num_epochs
         self.max_seq_len = max_seq_len

@@ -108,13 +108,13 @@ if __name__ == '__main__':
     config = TrainerConfig.from_json_file("./config/train_config.json")
     config.print_config()
     # ============== Model Metadata ==================
-    tokenizer = BertTokenizer.from_pretrained('./bert-base-chinese')  # load the pretrained model
+    tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)  # load the pretrained model
     label_vocab: Dict[str, int] = load_json_file("./config/label_vocab.json")
     plot_path = "./plots"
 
-    model = BERT_CRF('bert-base-chinese',
+    model = BERT_CRF(config.bert_model_path,
                      num_labels=len(label_vocab),
-                     num_hidden_layers=12,
+                     num_hidden_layers=12,  # bert-base-chinese pretrained default
                      pretrained=2).to(config.device)
 
     train_set = make_ner_dataset(config.max_seq_len, config.train_path, config.train_label_path, tokenizer, label_vocab,
