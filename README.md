@@ -37,7 +37,7 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 
 ### 2. 下载预训练模型和分词器：
 
-从huggingface下载`bert-base-chinese`预训练模型以及分词器。
+从huggingface下载`bert-base-chinese`[预训练模型](https://huggingface.co/google-bert/bert-base-chinese)以及分词器。
 
 ### 3. 准备训练数据：
 
