@@ -8,9 +8,7 @@
 ![NumPy](https://img.shields.io/badge/NumPy-1.21.2-orange)
 ![Matplotlib](https://img.shields.io/badge/Matplotlib-3.4.3-yellow)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-0.24.2-blueviolet)
-![prettytable](https://img.shields.io/badge/prettytable-2.4.0-lightgrey)
 ![joblib](https://img.shields.io/badge/joblib-1.1.0-ff69b4)
-![tqdm](https://img.shields.io/badge/tqdm-4.62.3-9cf)
 
 
 ## 序列标注任务
