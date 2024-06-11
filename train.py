@@ -49,12 +49,13 @@ def train_epoch(model, data_loader, optimizer, device) -> Iterator[Dict[str, flo
         yield {"running_loss": running_loss / (idx + 1)}
 
 
-def validate(model, data_loader, optimizer, device) -> Iterator[Dict[str, float]]:
+@torch.no_grad()
+def validate(model, data_loader, _, device) -> Iterator[Dict[str, float]]:
     """
     validate model on dev set
     :param model:
     :param data_loader:
-    :param optimizer: [unused] 为了让形式和`train_epoch`类似
+    :param _: [unused] 为了让形式和`train_epoch`类似
     :param device:
     :return:
     """
@@ -65,28 +66,25 @@ def validate(model, data_loader, optimizer, device) -> Iterator[Dict[str, float]
     all_labels = []
     all_predictions = []
 
-    with torch.no_grad():
-        for idx, batch in enumerate(data_loader):
-            batch = collate_fn(batch, device)
-            # batch = {k: v.to(device) for k, v in batch.items()}
-            loss = model(**batch)
-            val_running_loss += loss.item()
+    for idx, batch in enumerate(data_loader):
+        batch = collate_fn(batch, device)
+        loss = model(**batch)
+        val_running_loss += loss.item()
 
-            predictions = model(batch["input_ids"], batch["attention_mask"])
-            for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
-                valid_labels = label[mask == 1]
-                valid_preds = pred if isinstance(model, BERT_CRF) else pred[mask == 1]
-                correct_predictions += (torch.tensor(valid_preds).to(device) == valid_labels).sum().item()
-                total_predictions += len(valid_labels)
-                valid_labels = valid_labels.detach().cpu().numpy()
-                all_labels.extend(valid_labels)
-                all_predictions.extend(valid_preds)
+        predictions = model(batch["input_ids"], batch["attention_mask"])
+        for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
+            valid_labels = label[mask == 1]
+            correct_predictions += (torch.tensor(pred).to(device) == valid_labels).sum().item()
+            total_predictions += len(valid_labels)
+            valid_labels = valid_labels.detach().cpu().numpy()
+            all_labels.extend(valid_labels)
+            all_predictions.extend(pred)
 
-            current_accuracy = correct_predictions / total_predictions
-            yield {"current_validation_loss": val_running_loss / (idx + 1),
-                   "current_accuracy": current_accuracy,
-                   "all_labels": all_labels,
-                   "all_predictions": all_predictions}
+        current_accuracy = correct_predictions / total_predictions
+        yield {"current_validation_loss": val_running_loss / (idx + 1),
+               "current_accuracy": current_accuracy,
+               "all_labels": all_labels,
+               "all_predictions": all_predictions}
 
 
 def plot_confusion_matrix(all_labels, all_preds, plot_path, label_map):
