@@ -33,11 +33,11 @@ def collate_fn(batch, device):
             "labels": batch_label_ids.to(device)}
 
 
-def train_epoch(model, train_dataloader, optimizer, device) -> Iterator[Dict[str, float]]:
+def train_epoch(model, data_loader, optimizer, device) -> Iterator[Dict[str, float]]:
     running_loss = 0.0
     model.train()
 
-    for idx, batch in enumerate(train_dataloader):
+    for idx, batch in enumerate(data_loader):
         # (batch_size, seq_len)
         batch = collate_fn(batch, device)
         # batch = {k: v.to(device) for k, v in batch.items()}
@@ -49,7 +49,15 @@ def train_epoch(model, train_dataloader, optimizer, device) -> Iterator[Dict[str
         yield {"running_loss": running_loss / (idx + 1)}
 
 
-def validate(model, val_dataloader, optimizer, device) -> Iterator[Dict[str, float]]:
+def validate(model, data_loader, optimizer, device) -> Iterator[Dict[str, float]]:
+    """
+    validate model on dev set
+    :param model:
+    :param data_loader:
+    :param optimizer: [unused] 为了让形式和`train_epoch`类似
+    :param device:
+    :return:
+    """
     model.eval()
     val_running_loss = 0.0
     correct_predictions = 0
@@ -58,7 +66,7 @@ def validate(model, val_dataloader, optimizer, device) -> Iterator[Dict[str, flo
     all_predictions = []
 
     with torch.no_grad():
-        for idx, batch in enumerate(val_dataloader):
+        for idx, batch in enumerate(data_loader):
             batch = collate_fn(batch, device)
             # batch = {k: v.to(device) for k, v in batch.items()}
             loss = model(**batch)
@@ -98,7 +106,8 @@ def plot_confusion_matrix(all_labels, all_preds, plot_path, label_map):
 
 
 def tqdm_iteration(desc, model, dataloader, optimizer, device, func):
-    p_bar = tqdm(func(model, dataloader, optimizer, device), desc=desc, total=len(dataloader))
+    generator = func(model, dataloader, optimizer, device)
+    p_bar = tqdm(generator, desc=desc, total=len(dataloader))
     for results in p_bar:
         p_bar.set_postfix(**{k: v for k, v in results.items() if isinstance(v, float)})
     return results
