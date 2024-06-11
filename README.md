@@ -1,6 +1,6 @@
 # BERT-CRF
 
-本repo旨在提供一个使用BERT+CRF模型进行**序列标注**的通用模板，遵循简洁容易使用的原则。
+开箱即用的**序列标注**训练以及评估流程。
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-1.10.0-red)
 ![Transformers](https://img.shields.io/badge/Transformers-4.12.3-green)
