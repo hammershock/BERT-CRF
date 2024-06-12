@@ -1,6 +1,6 @@
 # BERT-CRF
 
-开箱即用的**序列标注**训练以及评估流程。
+**序列标注**和**序列分类**训练以及评估流程。
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-1.10.0-red)
 ![Transformers](https://img.shields.io/badge/Transformers-4.12.3-green)
@@ -27,6 +27,10 @@
 
   将句子分为若干个部分，比如分词任务，每个部分可以有一个标签。
 
+### 句子分类任务举例:
+- **句子情感分类**
+  将句子按照情感分为两个类或多个类别
+
 ## 使用方法
 
 ### 1. 安装依赖库：
@@ -47,15 +51,9 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 
 ### 4. 配置训练设置：
 
-在`./config/train_config.json`文件中配置训练设置。
-
 示例：
 ```json
 {
-  "train_path": "./data/train.txt",
-  "train_label_path": "./data/train_TAG.txt",
-  "val_path": "./data/dev.txt",
-  "val_label_path": "./data/dev_TAG.txt",
   "bert_model_path": "./bert-base-chinese",
   "special_token_type": "O",
   "num_epochs": 50,
@@ -69,17 +67,36 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
   "save_every": 1,
   "log_path": "./logs/train.log",
   "device": "cuda",
-  "num_workers": 14
+  "num_workers": 14,
+  "pretrained_model": null
 }
 ```
 
-### 5. 配置标签词汇表：
+### 5. 配置数据集配置：
 
-在`./config/label_vocab.json`文件中配置标签词汇表。
+这个模型既可以用作序列标注模型，也可以用于句子分类，因为还有一个分类头。
+你可以只用它序列标注或句子分类，也可以同时用作两个用途。其余的标签文件设置为空即可。
 
 示例：
-```json
-{"I_T": 8, "I_PER": 7, "B_LOC": 2, "B_PER": 0, "B_T": 3, "B_ORG": 6, "I_LOC": 4, "O": 5, "I_ORG": 1}
+```
+{
+  "dataset_dir": "./data/dataset1",
+  "tags_map": {"I_T": 8, "I_PER": 7, "B_LOC": 2, "B_PER": 0, "B_T": 3, "B_ORG": 6, "I_LOC": 4, "O": 5, "I_ORG": 1},
+  "special_tag": "O",
+  "cls_map": null,  # 序列分类的标签映射表，同tags_map
+  "data": {
+    "train": {
+      "corpus_file": "train.txt",
+      "tags_file": "train_TAG.txt",
+      "cls_file": null  # 设置为空，相当于只训练序列标注
+    },
+    "dev": {
+      "corpus_file": "dev.txt",
+      "tags_file": "dev_TAG.txt",
+      "cls_file": null
+    }
+  }
+}
 ```
 
 ### 6. 开始训练：
