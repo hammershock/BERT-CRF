@@ -90,7 +90,7 @@ def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
             cls = seq_cls.strip()
             data_out["classes"].extend([config.cls_map[cls]] * len(b_input_ids))
 
-        kwargs = {k: torch.from_numpy(np.array(v, dtype=np.int64)) for k, v in data_out.items()}
+    kwargs = {k: torch.from_numpy(np.array(v, dtype=np.int64)) for k, v in data_out.items()}
 
-        return DictTensorDataset(**kwargs)
+    return DictTensorDataset(**kwargs)
 

@@ -1,5 +1,6 @@
 from enum import Enum, auto
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchcrf import CRF
@@ -65,11 +66,19 @@ class BERT_CRF(nn.Module):
             decoded_labels = self.crf.decode(emissions, mask=attention_mask.bool())  # decoded ids (integers)
             return decoded_labels, logits
 
-        loss = 0.0
+        loss = {}
         if labels is not None:
-            loss += -self.crf(emissions, labels, mask=attention_mask.bool())
+            loss["seq"] = - self.crf(emissions, labels, mask=attention_mask.bool())
         if classes is not None:
-            loss += F.cross_entropy(logits, classes)
+            loss["cls"] = F.cross_entropy(logits, classes)
+        if len(loss) == 2:
+            seq_loss = loss["seq"]
+            cls_loss = loss["cls"]
+            scale_seq = torch.sqrt(cls_loss / seq_loss)
+            scale_cls = torch.sqrt(seq_loss / cls_loss)
+            loss = scale_seq * seq_loss + scale_cls * cls_loss
+        else:
+            loss = sum(loss.values())
         return loss
 
 

@@ -9,7 +9,7 @@ from transformers import BertTokenizer
 from model import BERT_CRF
 
 CACHE_DIR = 'bert-base-chinese'
-file_path = "data/test.txt"
+file_path = "data/dataset1/test.txt"
 out_path = "../data/test_TAG.txt"
 model_path = "../models/model_epoch_5.pth"
 

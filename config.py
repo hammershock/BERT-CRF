@@ -7,7 +7,7 @@ from prettytable import PrettyTable
 
 class _BaseConfig:
     def __repr__(self):
-        return json.dumps(self.__dict__)
+        return json.dumps({k: v for k, v in self.__dict__.items() if not isinstance(v, DataConfig)})
 
     def dump_to_json(self, json_path="./config.json"):
         if os.path.exists(json_path):  # avoid overwrite
@@ -15,15 +15,6 @@ class _BaseConfig:
         with open(json_path, 'w') as f:
             json.dump(self.__dict__, f, indent=4)
         print(f"Configuration dumped to {json_path}")
-
-    def print_config(self):
-        table = PrettyTable()
-        table.field_names = ["Parameter", "Value"]
-
-        for key, value in self.__dict__.items():
-            table.add_row([key, value])
-
-        print(table)
 
     @classmethod
     def from_json_file(cls, json_file):
@@ -36,7 +27,7 @@ class TrainerConfig(_BaseConfig):
     def __init__(self, *, bert_model_path, device,
                  num_epochs: int, max_seq_len: int, overlap: int, batch_size: int, lr: float, lr_crf: float,
                  num_hidden_layers: int, save_path: str, save_every: int, log_path: str, num_workers: int,
-                 special_token_type: str):
+                 special_token_type: str, pretrained_model):
         self.bert_model_path = bert_model_path
         self.device = device
         self.special_token_type = special_token_type
@@ -51,6 +42,16 @@ class TrainerConfig(_BaseConfig):
         self.save_every = save_every
         self.log_path = log_path
         self.num_workers = num_workers
+        self.pretrained_model = pretrained_model
+
+    def print_config(self):
+        table = PrettyTable()
+        table.field_names = ["Parameter", "Value"]
+
+        for key, value in self.__dict__.items():
+            table.add_row([key, value])
+
+        print(table)
 
 
 class DataConfig(_BaseConfig):
@@ -72,4 +73,5 @@ class DatasetConfig(_BaseConfig):
 
 
 if __name__ == "__main__":
-    data_config = DatasetConfig.from_json_file("./config/data.json")
+    data_config = DatasetConfig.from_json_file("data/dataset1/data.json")
+    print(data_config)

@@ -29,7 +29,7 @@ def plot_confusion_matrix(all_labels, all_preds, plot_path):
 
 
 if __name__ == "__main__":
-    config = TrainerConfig.from_json_file("./config/train_config.json")
+    config = TrainerConfig.from_json_file("data/dataset1/train_config.json")
     config.print_config()
     plot_path = "./plots/confusion_matrix.png"
 
