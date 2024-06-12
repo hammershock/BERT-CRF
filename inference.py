@@ -36,7 +36,9 @@ def inference(text: str, config_path: str, data_config_path: str, bert_model_pat
 
 
 if __name__ == '__main__':
-    input_string = "1月9日,记者在泽州县周村镇周村采访时,发现一通落款怪异的石碑。后查证得知,这通刻满日寇士兵名字的石碑,是当年侵华日寇为纪念所谓的战死军人所立的“忠魂”碑,其对侵略进行赤裸裸美化的行径,成为日本侵略中国的又一罪证。"
+    input_string = ("1月9日,记者在泽州县周村镇周村采访时,发现一通落款怪异的石碑。后查证得知,"
+                    "这通刻满日寇士兵名字的石碑,是当年侵华日寇为纪念所谓的战死军人所立的“忠魂”碑,"
+                    "其对侵略进行赤裸裸美化的行径,成为日本侵略中国的又一罪证。")
 
     config_path = "data/dataset1/train_config.json"
     data_config_path = "./data/dataset1/data.json"

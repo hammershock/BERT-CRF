@@ -57,6 +57,7 @@ def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
     """load corpus lines and tokenize them into tensors"""
     data_in = {"documents": load_txt_file(os.path.join(config.dataset_dir, data_files.corpus_file))}
     nothings = [None] * len(data_in["documents"])
+    # align the tags and cls labels to the corpus file
     data_in["sequences_labels"] = load_txt_file(os.path.join(config.dataset_dir, data_files.tags_file)) if data_files.tags_file else nothings
     data_in["sequences_cls"] = load_txt_file(os.path.join(config.dataset_dir, data_files.cls_file)) if data_files.cls_file else nothings
 
@@ -73,6 +74,7 @@ def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
 
         tokens, label_ids = zip(*tokens)
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        # cut the sequence into equal-length parts, and pad the remaining part
         b_input_ids, b_attention_mask = _create_batches(input_ids, max_seq_len=max_seq_len, overlap=overlap,
                                                         pad_id=tokenizer.pad_token_id)
         data_out["input_ids"].extend(b_input_ids)

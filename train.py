@@ -26,7 +26,33 @@ from ner_dataset import make_ner_dataset
 from utils import ensure_dir_exists
 
 
-def train_epoch(model, data_loader, optimizer, device) -> Iterator[Dict[str, float]]:
+class FGM:
+    """Fast Gradient Method (FGM) for adversarial training on embedding layer"""
+    def __init__(self, model, epsilon=1.0):
+        self.model = model
+        self.epsilon = epsilon
+        self.backup = {}
+
+    def attack(self):
+        # Save original embeddings
+        for name, param in self.model.named_parameters():
+            if param.requires_grad and 'embeddings' in name:
+                self.backup[name] = param.data.clone()
+                norm = torch.norm(param.grad)
+                if norm != 0:
+                    r_at = self.epsilon * param.grad / norm
+                    param.data.add_(r_at)
+
+    def restore(self):
+        # Restore original embeddings
+        for name, param in self.model.named_parameters():
+            if param.requires_grad and 'embeddings' in name:
+                assert name in self.backup
+                param.data = self.backup[name]
+        self.backup = {}
+
+
+def train_epoch(model, data_loader, optimizer, device, fgm) -> Iterator[Dict[str, float]]:
     running_loss = 0.0
     model.train()
 
@@ -36,19 +62,26 @@ def train_epoch(model, data_loader, optimizer, device) -> Iterator[Dict[str, flo
         optimizer.zero_grad()
         loss = model(**batch)
         loss.backward()
+
+        fgm.attack()
+        loss_adv = model(**batch)
+        loss_adv.backward()
+        fgm.restore()
+
         optimizer.step()
         running_loss += loss.item()
         yield {"running_loss": running_loss / (idx + 1)}
 
 
 @torch.no_grad()
-def validate(model, data_loader, _, device) -> Iterator[Dict[str, float]]:
+def validate(model, data_loader, _, device, __) -> Iterator[Dict[str, float]]:
     """
     validate model on dev set
     :param model:
     :param data_loader:
     :param _: [unused] 为了让形式和`train_epoch`类似
     :param device:
+    :param __: [unused]
     :return:
     """
     model.eval()
@@ -109,8 +142,8 @@ def plot_confusion_matrix(all_labels, all_preds, plot_path, label_map):
     plt.show()
 
 
-def tqdm_iteration(desc, model, dataloader, optimizer, device, func):
-    generator = func(model, dataloader, optimizer, device)
+def tqdm_iteration(desc, model, dataloader, optimizer, device, fgm, func):
+    generator = func(model, dataloader, optimizer, device, fgm)
     p_bar = tqdm(generator, desc=desc, total=len(dataloader))
     for results in p_bar:
         p_bar.set_postfix(**{k: v for k, v in results.items() if isinstance(v, float)})
@@ -168,14 +201,15 @@ if __name__ == '__main__':
 
     ensure_dir_exists(config.log_path)
     logging.basicConfig(filename=config.log_path, level=logging.INFO)
+    fgm = FGM(model)
 
     for epoch in range(config.num_epochs):
         # ============= Train ==============
-        results = tqdm_iteration(f"Training {epoch + 1} / {config.num_epochs}", model, train_loader, optimizer, config.device, train_epoch)
+        results = tqdm_iteration(f"Training {epoch + 1} / {config.num_epochs}", model, train_loader, optimizer, config.device, fgm, train_epoch)
         logging.info(f'Epoch: {epoch + 1} ' + " ".join(f"{k}: {v}" for k, v in results.items() if isinstance(v, float)))
 
         # ============= Validation ==============
-        results = tqdm_iteration(f"Validation {epoch + 1} / {config.num_epochs}", model, val_loader, optimizer, config.device, validate)
+        results = tqdm_iteration(f"Validation {epoch + 1} / {config.num_epochs}", model, val_loader, optimizer, config.device, fgm, validate)
         logging.info(f'Epoch: {epoch + 1} ' + " ".join(f"{k}: {v}" for k, v in results.items() if isinstance(v, float)))  # Log the training loss
         ensure_dir_exists(config.plot_path)
         plot_confusion_matrix(results["all_tag_labels"], results["all_tag_preds"], os.path.join(config.plot_path, f"tags_cm_{epoch}.png"), data_config.tags_map)
