@@ -9,7 +9,6 @@
 """
 import logging
 import os
-import sys
 from typing import Dict, Iterator
 
 import numpy as np
@@ -139,9 +138,7 @@ if __name__ == '__main__':
 
     # prepare for training...
     train_loader = DataLoader(train_set, batch_size=10, shuffle=True, num_workers=config.num_workers)
-    # val_loader = DataLoader(val_set, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
-    for batch in train_loader:
-        print(batch)
+    val_loader = DataLoader(val_set, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
 
     optimizer = AdamW([
         {'params': list(model.bert.parameters()) + list(model.fc.parameters()), 'lr': config.lr},
