@@ -103,7 +103,7 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 ### 6. 开始训练：
 
 ```bash
-python train.py
+python train.py --train_config path/to/your/train/config --data_config path/to/your/data/config
 ```
 
 ### 7. 预测：
