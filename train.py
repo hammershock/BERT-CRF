@@ -7,6 +7,7 @@
 @email: zhanghanmo@bupt.edu.cn
 
 """
+import argparse
 import logging
 import os
 from typing import Dict, Iterator
@@ -116,15 +117,35 @@ def tqdm_iteration(desc, model, dataloader, optimizer, device, func):
     return results
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Training and Dataset configuration")
+
+    parser.add_argument(
+        '--train_config',
+        type=str,
+        default="data/product_comments/train_config.json",
+        help='Path to the training configuration file'
+    )
+    parser.add_argument(
+        '--data_config',
+        type=str,
+        default="data/product_comments/data.json",
+        help='Path to the dataset configuration file'
+    )
+
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
-    config = TrainerConfig.from_json_file("data/product_comments/train_config.json")
+    args = parse_arguments()
+    # Load configurations
+    config = TrainerConfig.from_json_file(args.train_config)
     config.print_config()
-    data_config = DatasetConfig.from_json_file("data/product_comments/data.json")
+    data_config = DatasetConfig.from_json_file(args.data_config)
 
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)  # load the pretrained model
-
-    plot_path = "./plots"
 
     model = BERT_CRF(config.bert_model_path,
                      num_labels=len(data_config.tags_map) if data_config.tags_map else 1,
@@ -156,9 +177,9 @@ if __name__ == '__main__':
         # ============= Validation ==============
         results = tqdm_iteration(f"Validation {epoch + 1} / {config.num_epochs}", model, val_loader, optimizer, config.device, validate)
         logging.info(f'Epoch: {epoch + 1} ' + " ".join(f"{k}: {v}" for k, v in results.items() if isinstance(v, float)))  # Log the training loss
-        ensure_dir_exists(plot_path)
-        plot_confusion_matrix(results["all_tag_labels"], results["all_tag_preds"], os.path.join(plot_path, f"tags_cm_{epoch}.png"), data_config.tags_map)
-        plot_confusion_matrix(results["all_cls_labels"], results["all_cls_preds"], os.path.join(plot_path, f"cls_cm_{epoch}.png"), data_config.cls_map)
+        ensure_dir_exists(config.plot_path)
+        plot_confusion_matrix(results["all_tag_labels"], results["all_tag_preds"], os.path.join(config.plot_path, f"tags_cm_{epoch}.png"), data_config.tags_map)
+        plot_confusion_matrix(results["all_cls_labels"], results["all_cls_preds"], os.path.join(config.plot_path, f"cls_cm_{epoch}.png"), data_config.cls_map)
         if epoch % config.save_every == 0:
             ensure_dir_exists(config.save_path)
             torch.save(model.state_dict(), config.save_path)

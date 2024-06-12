@@ -1,6 +1,5 @@
 import json
 import os
-from collections.abc import Mapping
 
 from prettytable import PrettyTable
 
@@ -26,8 +25,8 @@ class _BaseConfig:
 class TrainerConfig(_BaseConfig):
     def __init__(self, *, bert_model_path, device,
                  num_epochs: int, max_seq_len: int, overlap: int, batch_size: int, lr: float, lr_crf: float,
-                 num_hidden_layers: int, save_path: str, save_every: int, log_path: str, num_workers: int,
-                 special_token_type: str, pretrained_model):
+                 num_hidden_layers: int, save_path: str, plot_path: str, save_every: int, log_path: str,
+                 num_workers: int, special_token_type: str, pretrained_model):
         self.bert_model_path = bert_model_path
         self.device = device
         self.special_token_type = special_token_type
@@ -39,6 +38,7 @@ class TrainerConfig(_BaseConfig):
         self.lr_crf = lr_crf
         self.num_hidden_layers = num_hidden_layers
         self.save_path = save_path
+        self.plot_path = plot_path
         self.save_every = save_every
         self.log_path = log_path
         self.num_workers = num_workers

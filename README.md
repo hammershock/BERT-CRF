@@ -66,6 +66,7 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
   "save_path": "./models/my_model.pth",
   "save_every": 1,
   "log_path": "./logs/train.log",
+  "plot_path": "./plots",
   "device": "cuda",
   "num_workers": 14,
   "pretrained_model": null
@@ -78,17 +79,17 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 你可以只用它序列标注或句子分类，也可以同时用作两个用途。其余的标签文件设置为空即可。
 
 示例：
-```
+```json
 {
   "dataset_dir": "./data/dataset1",
   "tags_map": {"I_T": 8, "I_PER": 7, "B_LOC": 2, "B_PER": 0, "B_T": 3, "B_ORG": 6, "I_LOC": 4, "O": 5, "I_ORG": 1},
   "special_tag": "O",
-  "cls_map": null,  # 序列分类的标签映射表，同tags_map
+  "cls_map": null,  // 序列分类的标签映射表，同tags_map
   "data": {
     "train": {
       "corpus_file": "train.txt",
       "tags_file": "train_TAG.txt",
-      "cls_file": null  # 设置为空，相当于只训练序列标注
+      "cls_file": null  // 设置为空，相当于只训练序列标注
     },
     "dev": {
       "corpus_file": "dev.txt",
@@ -105,6 +106,6 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 python train.py
 ```
 
-### 7. 预测和评估：
+### 7. 预测：
 
-训练完成后，可以使用训练好的模型进行预测和评估。请参考`inference.py`和`evaluate.py`脚本。
+训练完成后，可以使用训练好的模型进行预测。请参考`inference.py`脚本。
