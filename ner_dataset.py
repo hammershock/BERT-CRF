@@ -53,8 +53,11 @@ def _create_batches(input_ids, max_seq_len: int, overlap: int, pad_id: int) -> T
 
 
 @memory.cache
-def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
-    """load corpus lines and tokenize them into tensors"""
+def make_ner_dataset(data_files, config, tokenizer):
+    """
+    make tensor datasets from data config, with line cut and auto padding
+    the out keys depends on the config
+    """
     data_in = {"documents": load_txt_file(os.path.join(config.dataset_dir, data_files.corpus_file))}
     nothings = [None] * len(data_in["documents"])
     # align the tags and cls labels to the corpus file
@@ -75,7 +78,7 @@ def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
         tokens, label_ids = zip(*tokens)
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
         # cut the sequence into equal-length parts, and pad the remaining part
-        b_input_ids, b_attention_mask = _create_batches(input_ids, max_seq_len=max_seq_len, overlap=overlap,
+        b_input_ids, b_attention_mask = _create_batches(input_ids, max_seq_len=config.max_seq_len, overlap=config.overlap,
                                                         pad_id=tokenizer.pad_token_id)
         data_out["input_ids"].extend(b_input_ids)
         data_out["attention_mask"].extend(b_attention_mask)
@@ -83,7 +86,7 @@ def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
         if seq_labels is not None:
             label_ids = [config.tags_map[label] for label in label_ids]
 
-            b_label_ids, _ = _create_batches(label_ids, max_seq_len=max_seq_len, overlap=overlap,
+            b_label_ids, _ = _create_batches(label_ids, max_seq_len=config.max_seq_len, overlap=config.overlap,
                                              pad_id=tokenizer.pad_token_id)
 
             data_out["labels"].extend(b_label_ids)

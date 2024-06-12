@@ -8,51 +8,57 @@
 
 """
 import argparse
+import csv
 import logging
 import os
-from typing import Dict, Iterator
+import warnings
+from collections import defaultdict
+from functools import wraps
+from typing import Dict, Iterator, Callable, Any
 
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import BertTokenizer, AdamW
 
 from config import TrainerConfig, DatasetConfig
 from model import BERT_CRF
 from ner_dataset import make_ner_dataset
+from fgm_attack import FGM
+from plot_utils import plot_confusion_matrix, plot_auc_curve
 from utils import ensure_dir_exists
 
 
-class FGM:
-    """Fast Gradient Method (FGM) for adversarial training on embedding layer"""
-    def __init__(self, model, epsilon=1.0):
-        self.model = model
-        self.epsilon = epsilon
-        self.backup = {}
+def tqdm_iteration(desc: str, func: Callable[..., Iterator[Dict[str, Any]]]):
+    """iteration helper"""
 
-    def attack(self):
-        # Save original embeddings
-        for name, param in self.model.named_parameters():
-            if param.requires_grad and 'embeddings' in name:
-                self.backup[name] = param.data.clone()
-                norm = torch.norm(param.grad)
-                if norm != 0:
-                    r_at = self.epsilon * param.grad / norm
-                    param.data.add_(r_at)
+    @wraps(func)
+    def wrapper(*args, **kwargs) -> Dict[str, Any]:
+        generator = func(*args, **kwargs)
+        assert isinstance(args[1], DataLoader), "args[1] must be DataLoader"
+        if 'epoch' not in kwargs:
+            warnings.warn("attr epoch not found in kwargs, not able to display the current iteration progress")
+        progress = f"epoch {kwargs.get('epoch', 0)}/{len(args[1])}"
+        p_bar = tqdm(generator, desc=desc + progress, total=len(args[1]))  # args[1] should be dataloader
+        result = None
+        for results in p_bar:
+            p_bar.set_postfix(**{k: v for k, v in results.items() if isinstance(v, float)})
+            result = results
+        return result
 
-    def restore(self):
-        # Restore original embeddings
-        for name, param in self.model.named_parameters():
-            if param.requires_grad and 'embeddings' in name:
-                assert name in self.backup
-                param.data = self.backup[name]
-        self.backup = {}
+    return wrapper
 
 
-def train_epoch(model, data_loader, optimizer, device, fgm) -> Iterator[Dict[str, float]]:
+def with_tqdm(desc: str):
+    def decorator(func: Callable[..., Iterator[Dict[str, Any]]]):
+        return tqdm_iteration(desc, func)
+
+    return decorator
+
+
+@with_tqdm("Training")
+def train_epoch(model, data_loader, optimizer, device, *, fgm=None, epoch=None) -> Dict[str, Any]:
     running_loss = 0.0
     model.train()
 
@@ -60,138 +66,134 @@ def train_epoch(model, data_loader, optimizer, device, fgm) -> Iterator[Dict[str
         # (batch_size, seq_len)
         batch = {k: v.to(device) for k, v in batch.items()}
         optimizer.zero_grad()
-        loss = model(**batch)
+        # the model will automatically handle the multiple inputs, and compute loss
+        loss = model(**batch)  # when labels provided, it returns loss
         loss.backward()
 
-        fgm.attack()
-        loss_adv = model(**batch)
-        loss_adv.backward()
-        fgm.restore()
+        if fgm is not None:
+            fgm.attack()
+            loss_adv = model(**batch)
+            loss_adv.backward()
+            fgm.restore()
 
         optimizer.step()
         running_loss += loss.item()
         yield {"running_loss": running_loss / (idx + 1)}
 
 
+@with_tqdm("Validating")
 @torch.no_grad()
-def validate(model, data_loader, _, device, __) -> Iterator[Dict[str, float]]:
+def validate(model, data_loader, device, *, epoch=None) -> Dict[str, Any]:
     """
     validate model on dev set
     :param model:
     :param data_loader:
-    :param _: [unused] 为了让形式和`train_epoch`类似
     :param device:
-    :param __: [unused]
+    :param epoch: current epoch progress
     :return:
     """
     model.eval()
-    val_running_loss = 0.0
-    correct_tags_predictions = 0
-    total_tags_predictions = 0
-    all_tag_labels = []
-    all_tag_preds = []
-    all_cls_labels = []
-    all_cls_preds = []
+    ret = defaultdict(list)
 
     for idx, batch in enumerate(data_loader):
         batch = {k: v.to(device) for k, v in batch.items()}
-        loss = model(**batch)
-        val_running_loss += loss.item()
+        predictions, label_logits = model(batch["input_ids"], batch["attention_mask"])
+        # predictions: [batch, seq_len]  # TODO: is crf output a Tensor? Probably not!
+        # label_logits: Tensor[batch, num_cls]
 
-        predictions, label_preds = model(batch["input_ids"], batch["attention_mask"])
-        # 评估序列标注
-        for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
-            valid_labels = label[mask == 1]
-            correct_tags_predictions += (torch.tensor(pred).to(device) == valid_labels).sum().item()
-            total_tags_predictions += len(valid_labels)
-            valid_labels = valid_labels.detach().cpu().numpy()
-            all_tag_labels.extend(valid_labels)
-            all_tag_preds.extend(pred)
+        if "labels" in batch:  # 评估序列标注
+            for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
+                # pred: [seq_len]
+                valid_labels = label[mask == 1].detach().cpu().numpy()
+                ret['tag_gts'].extend(valid_labels)
+                ret['tag_preds'].extend(pred)
 
-        # 评估句子分类
-        for pred, cls in zip(label_preds, batch["classes"]):
-            pred_label = torch.argmax(pred, dim=-1).cpu().numpy()
-            cls_label = cls.cpu().item()
-            all_cls_labels.append(cls_label)
-            all_cls_preds.append(pred_label)
-
-        current_accuracy = correct_tags_predictions / total_tags_predictions
-        sentence_classification_accuracy = accuracy_score(all_cls_labels, all_cls_preds)
-        yield {"loss": val_running_loss / (idx + 1),
-               "tags_acc": current_accuracy,
-               "all_tag_labels": all_tag_labels,
-               "all_tag_preds": all_tag_preds,
-               "cls_acc": sentence_classification_accuracy,
-               "all_cls_labels": all_cls_labels,
-               "all_cls_preds": all_cls_preds}
+        if "classes" in batch:  # 评估句子分类
+            cls_probs = F.softmax(label_logits, dim=-1)
+            cls_labels = torch.argmax(label_logits, dim=-1)  # [batch]
+            ret['cls_preds'].extend(cls_labels.cpu().numpy())
+            ret['cls_gts'].extend(batch['class'].cpu().numpy())
+            ret['cls_probs'].extend(cls_probs.cpu().numpy())
+        yield ret
 
 
-def plot_confusion_matrix(all_labels, all_preds, plot_path, label_map):
-    all_labels = np.array(all_labels)
-    all_preds = np.array(all_preds)
-    # Compute the confusion matrix
-    conf_matrix = confusion_matrix(all_labels, all_preds, normalize='true')
+@torch.no_grad()
+def test(model, data_loader, device, output_path):
+    """
+    Test the model and write the results to a CSV file
+    :param model:
+    :param data_loader:
+    :param device:
+    :param output_path: Path to the output CSV file
+    """
+    model.eval()
+    results = []
 
-    # Plot the normalized confusion matrix
-    fig, ax = plt.subplots(figsize=(10, 10))
-    disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=list(label_map.keys()))
-    disp.plot(ax=ax, cmap=plt.cm.Blues)
-    plt.title('Normalized Confusion Matrix')
-    ensure_dir_exists(plot_path)
-    plt.savefig(plot_path)
-    plt.show()
+    for idx, batch in enumerate(data_loader):
+        batch = {k: v.to(device) for k, v in batch.items()}
+        predictions, label_logits = model(batch["input_ids"], batch["attention_mask"])
+        label_preds = F.softmax(label_logits, dim=-1)
 
+        for i, (pred, label) in enumerate(zip(predictions, batch["labels"])):
+            bio_anno = " ".join(pred)
+            cls_label = torch.argmax(label_preds[i], dim=-1).item()
+            results.append([idx * len(predictions) + i, bio_anno, cls_label])
 
-def tqdm_iteration(desc, model, dataloader, optimizer, device, fgm, func):
-    generator = func(model, dataloader, optimizer, device, fgm)
-    p_bar = tqdm(generator, desc=desc, total=len(dataloader))
-    for results in p_bar:
-        p_bar.set_postfix(**{k: v for k, v in results.items() if isinstance(v, float)})
-    return results
+    with open(output_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["id", "BIO_anno", "class"])
+        writer.writerows(results)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Training and Dataset configuration")
+    parser.add_argument('--train_config', type=str, required=True)
+    parser.add_argument('--data_config', type=str, required=True)
+    return parser.parse_args()
 
-    parser.add_argument(
-        '--train_config',
-        type=str,
-        default="data/product_comments/train_config.json",
-        help='Path to the training configuration file'
-    )
-    parser.add_argument(
-        '--data_config',
-        type=str,
-        default="data/product_comments/data.json",
-        help='Path to the dataset configuration file'
-    )
 
-    args = parser.parse_args()
-    return args
+def plot_val_results(val_results: Dict[str, Any], epoch: int, plot_path, tags_map, cls_map) -> None:
+    ensure_dir_exists(plot_path)
+    tag_cm_path = os.path.join(plot_path, f"tags_cm_{epoch}.png")
+    cls_cm_path = os.path.join(plot_path, f"cls_cm_{epoch}.png")
+    auc_curve_path = os.path.join(plot_path, f"auc_curve_{epoch}.png")
+
+    plot_confusion_matrix(val_results.get("tag_gts"), val_results.get("tag_preds"), tag_cm_path, tags_map)
+    plot_confusion_matrix(val_results.get("cls_gts"), val_results.get("cls_preds"), cls_cm_path, cls_map)
+    plot_auc_curve(val_results.get("cls_gts"), val_results.get("cls_probs"), auc_curve_path, cls_map)
 
 
 if __name__ == '__main__':
     args = parse_arguments()
-    # Load configurations
+    # load configs
     config = TrainerConfig.from_json_file(args.train_config)
     config.print_config()
     data_config = DatasetConfig.from_json_file(args.data_config)
 
-    # ============== Model Metadata ==================
-    tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)  # load the pretrained model
+    """
+    Text labeling and Text classification, two tasks all in one model!
+    You can train the model using either kind of data
+    """
+    # tokenizer
+    tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)
 
+    # define model
     model = BERT_CRF(config.bert_model_path,
                      num_labels=len(data_config.tags_map) if data_config.tags_map else 1,
                      num_classes=len(data_config.cls_map) if data_config.cls_map else 1,
                      ).to(config.device)
 
+    # load model from checkpoint
     if config.pretrained_model is not None:
         model.load_state_dict(torch.load(config.pretrained_model, map_location=config.device))
-    train_set = make_ner_dataset(data_config.train_data, data_config, tokenizer, config.max_seq_len, overlap=config.overlap)
-    val_set = make_ner_dataset(data_config.dev_data, data_config, tokenizer, config.max_seq_len, overlap=config.overlap)
 
-    # prepare for training...
-    train_loader = DataLoader(train_set, batch_size=10, shuffle=True, num_workers=config.num_workers)
+    # datasets
+    train_set = make_ner_dataset(data_config.train_data, data_config, tokenizer)
+    val_set = make_ner_dataset(data_config.dev_data, data_config, tokenizer)
+
+    # prepare for training here
+    # dataloaders, optimizer and logger
+    train_loader = DataLoader(train_set, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
     val_loader = DataLoader(val_set, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
 
     optimizer = AdamW([
@@ -199,21 +201,19 @@ if __name__ == '__main__':
         {'params': list(model.crf.parameters()), 'lr': config.lr_crf}
     ])
 
-    ensure_dir_exists(config.log_path)
-    logging.basicConfig(filename=config.log_path, level=logging.INFO)
-    fgm = FGM(model)
+    # ensure_dir_exists(config.log_path)
+    # logging.basicConfig(filename=config.log_path, level=logging.INFO)
+
+    fgm = FGM(model)  # fgm attacker for embedding layers
 
     for epoch in range(config.num_epochs):
-        # ============= Train ==============
-        results = tqdm_iteration(f"Training {epoch + 1} / {config.num_epochs}", model, train_loader, optimizer, config.device, fgm, train_epoch)
-        logging.info(f'Epoch: {epoch + 1} ' + " ".join(f"{k}: {v}" for k, v in results.items() if isinstance(v, float)))
+        # train the model with batched data, how to train depends on the data keys
+        train_results = train_epoch(model, train_loader, optimizer, device=config.device, fgm=fgm, epoch=epoch)
+        # model validation, how to validate depends on the data keys
+        val_results = validate(model, val_loader, device=config.device, epoch=epoch)
+        plot_val_results(val_results, epoch, config.plot_path, data_config.tags_map, data_config.cls_map)
 
-        # ============= Validation ==============
-        results = tqdm_iteration(f"Validation {epoch + 1} / {config.num_epochs}", model, val_loader, optimizer, config.device, fgm, validate)
-        logging.info(f'Epoch: {epoch + 1} ' + " ".join(f"{k}: {v}" for k, v in results.items() if isinstance(v, float)))  # Log the training loss
-        ensure_dir_exists(config.plot_path)
-        plot_confusion_matrix(results["all_tag_labels"], results["all_tag_preds"], os.path.join(config.plot_path, f"tags_cm_{epoch}.png"), data_config.tags_map)
-        plot_confusion_matrix(results["all_cls_labels"], results["all_cls_preds"], os.path.join(config.plot_path, f"cls_cm_{epoch}.png"), data_config.cls_map)
+        # save every
         if epoch % config.save_every == 0:
             ensure_dir_exists(config.save_path)
             torch.save(model.state_dict(), config.save_path)

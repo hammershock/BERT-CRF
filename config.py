@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Optional
 
 from prettytable import PrettyTable
 
@@ -23,34 +24,34 @@ class _BaseConfig:
 
 
 class TrainerConfig(_BaseConfig):
-    def __init__(self, *, bert_model_path, device,
-                 num_epochs: int, max_seq_len: int, overlap: int, batch_size: int, lr: float, lr_crf: float,
-                 num_hidden_layers: int, save_path: str, plot_path: str, save_every: int, log_path: str,
-                 num_workers: int, special_token_type: str, pretrained_model):
-        self.bert_model_path = bert_model_path
-        self.device = device
-        self.special_token_type = special_token_type
+    def __init__(self, *, bert_model_path: str, pretrained_model=None, num_hidden_layers=12,
+                 num_epochs, batch_size, lr, lr_crf, device, num_workers=12,
+                 save_path: Optional = None, plot_path: Optional = None, save_every=1, log_path: Optional = None):
+        # model hyperparameters
+        self.bert_model_path = bert_model_path  # bert-base-chinese model path
+        self.pretrained_model = pretrained_model  # load model from checkpoint
+        self.num_hidden_layers = num_hidden_layers
+
+        # training hyperparameters
         self.num_epochs = num_epochs
-        self.max_seq_len = max_seq_len
-        self.overlap = overlap
         self.batch_size = batch_size
         self.lr = lr
         self.lr_crf = lr_crf
-        self.num_hidden_layers = num_hidden_layers
+        self.device = device  # device type
+        self.num_workers = num_workers
+
+        # save & plot & logging settings (Optional)
         self.save_path = save_path
         self.plot_path = plot_path
         self.save_every = save_every
         self.log_path = log_path
-        self.num_workers = num_workers
-        self.pretrained_model = pretrained_model
 
     def print_config(self):
+        """use pretty to print the config out, is that cool?"""
         table = PrettyTable()
         table.field_names = ["Parameter", "Value"]
-
         for key, value in self.__dict__.items():
             table.add_row([key, value])
-
         print(table)
 
 
@@ -62,14 +63,17 @@ class DataConfig(_BaseConfig):
 
 
 class DatasetConfig(_BaseConfig):
-    def __init__(self, dataset_dir, tags_map, special_tag, cls_map, data):
+    def __init__(self, dataset_dir, max_seq_len, overlap, tags_map, special_tag, cls_map, data):
         self.dataset_dir = dataset_dir
+        self.max_seq_len = max_seq_len
+        self.overlap = overlap
         self.tags_map = tags_map
         self.special_tag = special_tag
         self.cls_map = cls_map
         self.data = data
         self.train_data = DataConfig(**data["train"])
         self.dev_data = DataConfig(**data["dev"])
+        self.test_file = data["test"]
 
 
 if __name__ == "__main__":
