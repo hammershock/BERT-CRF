@@ -19,18 +19,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import BertTokenizer, AdamW
 
-from config import TrainerConfig
+from config import TrainerConfig, DatasetConfig
 from model import BERT_CRF
-from ner_dataset import NERDataset, make_ner_dataset
-from utils import ensure_dir_exists, load_json_file
-
-
-def collate_fn(batch, device):
-    batch_input_ids, attention_mask, batch_label_ids = batch
-    # input_ids, attention_mask, labels
-    return {"input_ids": batch_input_ids.to(device),
-            "attention_mask": attention_mask.to(device),
-            "labels": batch_label_ids.to(device)}
+from ner_dataset import make_ner_dataset
+from utils import ensure_dir_exists
 
 
 def train_epoch(model, data_loader, optimizer, device) -> Iterator[Dict[str, float]]:
@@ -39,8 +31,7 @@ def train_epoch(model, data_loader, optimizer, device) -> Iterator[Dict[str, flo
 
     for idx, batch in enumerate(data_loader):
         # (batch_size, seq_len)
-        batch = collate_fn(batch, device)
-        # batch = {k: v.to(device) for k, v in batch.items()}
+        batch = {k: v.to(device) for k, v in batch.items()}
         optimizer.zero_grad()
         loss = model(**batch)
         loss.backward()
@@ -67,7 +58,7 @@ def validate(model, data_loader, _, device) -> Iterator[Dict[str, float]]:
     all_predictions = []
 
     for idx, batch in enumerate(data_loader):
-        batch = collate_fn(batch, device)
+        batch = {k: v.to(device) for k, v in batch.items()}
         loss = model(**batch)
         val_running_loss += loss.item()
 
@@ -114,20 +105,20 @@ def tqdm_iteration(desc, model, dataloader, optimizer, device, func):
 if __name__ == '__main__':
     config = TrainerConfig.from_json_file("./config/train_config.json")
     config.print_config()
+    data_config = DatasetConfig.from_json_file("./config/data.json")
+
     # ============== Model Metadata ==================
     tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)  # load the pretrained model
-    label_vocab: Dict[str, int] = load_json_file("./config/label_vocab.json")
+
     plot_path = "./plots"
 
     model = BERT_CRF(config.bert_model_path,
-                     num_labels=len(label_vocab),
-                     num_hidden_layers=12,  # bert-base-chinese pretrained default
-                     pretrained=2).to(config.device)
+                     num_labels=len(data_config.tags_map) if data_config.tags_map else 1,
+                     num_classes=len(data_config.cls_map) if data_config.cls_map else 1,
+                     ).to(config.device)
 
-    train_set = make_ner_dataset(config.max_seq_len, config.train_path, config.train_label_path, tokenizer, label_vocab,
-                                 special_label_id=label_vocab[config.special_token_type], overlap=config.overlap)
-    val_set = make_ner_dataset(config.max_seq_len, config.val_path, config.val_label_path, tokenizer, label_vocab,
-                               special_label_id=label_vocab[config.special_token_type], overlap=config.overlap)
+    train_set = make_ner_dataset(data_config.train_data, data_config, tokenizer, config.max_seq_len, overlap=config.overlap)
+    val_set = make_ner_dataset(data_config.dev_data, data_config, tokenizer, config.max_seq_len, overlap=config.overlap)
 
     # prepare for training...
     train_loader = DataLoader(train_set, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)

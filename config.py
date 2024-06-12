@@ -1,5 +1,6 @@
 import json
 import os
+from collections.abc import Mapping
 
 from prettytable import PrettyTable
 
@@ -15,22 +16,27 @@ class _BaseConfig:
             json.dump(self.__dict__, f, indent=4)
         print(f"Configuration dumped to {json_path}")
 
-    @staticmethod
-    def from_json_file(json_file) -> 'TrainerConfig':
+    def print_config(self):
+        table = PrettyTable()
+        table.field_names = ["Parameter", "Value"]
+
+        for key, value in self.__dict__.items():
+            table.add_row([key, value])
+
+        print(table)
+
+    @classmethod
+    def from_json_file(cls, json_file):
         with open(json_file, 'r') as f:
             data = json.load(f)
-        return TrainerConfig(**data)
+        return cls(**data)
 
 
 class TrainerConfig(_BaseConfig):
-    def __init__(self, *, train_path, train_label_path, val_path, val_label_path, bert_model_path, device,
+    def __init__(self, *, bert_model_path, device,
                  num_epochs: int, max_seq_len: int, overlap: int, batch_size: int, lr: float, lr_crf: float,
                  num_hidden_layers: int, save_path: str, save_every: int, log_path: str, num_workers: int,
                  special_token_type: str):
-        self.train_path = train_path
-        self.train_label_path = train_label_path
-        self.val_path = val_path
-        self.val_label_path = val_label_path
         self.bert_model_path = bert_model_path
         self.device = device
         self.special_token_type = special_token_type
@@ -46,11 +52,24 @@ class TrainerConfig(_BaseConfig):
         self.log_path = log_path
         self.num_workers = num_workers
 
-    def print_config(self):
-        table = PrettyTable()
-        table.field_names = ["Parameter", "Value"]
 
-        for key, value in self.__dict__.items():
-            table.add_row([key, value])
+class DataConfig(_BaseConfig):
+    def __init__(self, corpus_file, tags_file, cls_file):
+        self.corpus_file = corpus_file
+        self.tags_file = tags_file
+        self.cls_file = cls_file
 
-        print(table)
+
+class DatasetConfig(_BaseConfig):
+    def __init__(self, dataset_dir, tags_map, special_tag, cls_map, data):
+        self.dataset_dir = dataset_dir
+        self.tags_map = tags_map
+        self.special_tag = special_tag
+        self.cls_map = cls_map
+        self.data = data
+        self.train_data = DataConfig(**data["train"])
+        self.dev_data = DataConfig(**data["dev"])
+
+
+if __name__ == "__main__":
+    data_config = DatasetConfig.from_json_file("./config/data.json")

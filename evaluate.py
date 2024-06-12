@@ -41,7 +41,9 @@ if __name__ == "__main__":
     tokenizer = BertTokenizer.from_pretrained('./bert-base-chinese')
 
     # Initialize dataset and dataloader
-    val_dataset = make_ner_dataset(config.max_seq_len, config.val_path, config.val_label_path, tokenizer, label_map=label_map, special_label_id=label_map["O"])
+    val_dataset = make_ner_dataset(corpus_file=config.val_path, sequence_label_file=config.val_label_path,
+                                   label_map=label_map, tokenizer=tokenizer, max_seq_len=config.max_seq_len,
+                                   special_label=label_map["O"])
     val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
 
     result = tqdm_iteration(f"Validating", model, val_dataloader, None, config.device, validate)

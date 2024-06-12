@@ -1,67 +1,20 @@
+import os.path
+from collections import defaultdict
 from typing import Dict, List, Tuple, Sequence
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, TensorDataset
 from joblib import Memory
-from tqdm import tqdm
 
-from utils import check_file_pair
+from utils import DictTensorDataset
+from tqdm import tqdm
 
 memory = Memory("./.cache", verbose=0)
 
 
-def load_txt_file(filepath):
+def load_txt_file(filepath) -> List[str]:
     with open(filepath, 'r', encoding='utf-8') as f:
-        return [line.strip().split() for line in f.readlines()]
-
-
-class NERDataset(Dataset):
-    def __init__(self, max_seq_len, file_path, label_path, tokenizer, label_map, special_label_id):
-        self.max_len = max_seq_len
-
-        check_file_pair(file_path, label_path)
-        self.data = load_txt_file(file_path)
-        self.tags = load_txt_file(label_path)
-
-        self.tokenizer = tokenizer
-        self.label_map = label_map
-        self.special_label_id = special_label_id
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        words = self.data[idx]
-        tags = self.tags[idx]
-
-        tokens = []
-        label_ids = []
-
-        for word, tag in zip(words, tags):
-            word_tokens = self.tokenizer.tokenize(word)
-            tokens.extend(word_tokens)
-            label_ids.extend([self.label_map[tag]] * len(word_tokens))
-
-        tokens = tokens[:self.max_len-2]
-        label_ids = label_ids[:self.max_len-2]
-
-        tokens = ['[CLS]'] + tokens + ['[SEP]']
-        label_ids = [self.special_label_id] + label_ids + [self.special_label_id]
-
-        input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
-        attention_mask = [1] * len(input_ids)
-
-        padding_length = self.max_len - len(input_ids)
-        input_ids = input_ids + ([0] * padding_length)
-        attention_mask = attention_mask + ([0] * padding_length)
-        label_ids = label_ids + ([self.special_label_id] * padding_length)
-
-        return {
-            'input_ids': torch.tensor(input_ids, dtype=torch.long),
-            'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
-            'labels': torch.tensor(label_ids, dtype=torch.long)
-        }
+        return f.readlines()
 
 
 def tokenize(text: str, tokenizer) -> List[int]:
@@ -100,33 +53,44 @@ def _create_batches(input_ids, max_seq_len: int, overlap: int, pad_id: int) -> T
 
 
 @memory.cache
-def make_ner_dataset(max_seq_len, file_path, label_path, tokenizer, label_map, special_label_id, overlap=128):
+def make_ner_dataset(data_files, config, tokenizer, max_seq_len, overlap=128):
     """load corpus lines and tokenize them into tensors"""
-    # max_seq_len, file_path, label_path, tokenizer, label_map, special_label_id
-    with open(file_path, 'r', encoding='utf-8') as f:
-        total_lines = sum(1 for _ in f)
-    with open(file_path, 'r', encoding='utf-8') as f1, open(label_path, 'r', encoding='utf-8') as f2:
-        batch_input_ids, attention_mask, batch_label_ids = [], [], []
-        for line1, line2 in tqdm(zip(f1, f2), "building dataset", total=total_lines):
-            input_tokens = []
-            label_ids = []
-            for part1, part2 in zip(line1.strip().split(), line2.strip().split()):
-                tokens = tokenizer.tokenize(part1)
-                input_tokens.extend(tokens)
-                label_ids.extend([label_map[part2]] * len(tokens))
+    data_in = {"documents": load_txt_file(os.path.join(config.dataset_dir, data_files.corpus_file))}
+    nothings = [None] * len(data_in["documents"])
+    data_in["sequences_labels"] = load_txt_file(os.path.join(config.dataset_dir, data_files.tags_file)) if data_files.tags_file else nothings
+    data_in["sequences_cls"] = load_txt_file(os.path.join(config.dataset_dir, data_files.cls_file)) if data_files.cls_file else nothings
 
-            input_tokens = ["[CLS]"] + input_tokens + ["[SEP]"]
-            input_ids = tokenizer.convert_tokens_to_ids(input_tokens)
-            label_ids = [special_label_id] + label_ids + [special_label_id]
+    data_out = defaultdict(list)
+    zipped_gen = zip(data_in["documents"], data_in["sequences_labels"], data_in["sequences_cls"])
+    for text, seq_labels, seq_cls in tqdm(zipped_gen, total=len(data_in["documents"])):
+        parts = text.strip().split()
+        labels = seq_labels.strip().split() if seq_labels is not None else [None] * len(parts)
 
-            assert len(input_ids) == len(label_ids)
-            b_input_ids, b_attention_mask = _create_batches(input_ids, max_seq_len=max_seq_len, overlap=overlap, pad_id=tokenizer.pad_token_id)
-            b_label_ids, _ = _create_batches(label_ids, max_seq_len=max_seq_len, overlap=overlap, pad_id=tokenizer.pad_token_id)
-            batch_input_ids.append(b_input_ids)
-            attention_mask.append(b_attention_mask)
-            batch_label_ids.append(b_label_ids)
+        tokens = [("[CLS]", config.special_tag)]
+        for part, label in zip(parts, labels):
+            tokens += [(token, label) for token in tokenizer.tokenize(part)]
+        tokens += [("[SEP]", config.special_tag)]
 
-        batch_label_ids = torch.from_numpy(np.concatenate(batch_label_ids, dtype=np.int64))
-        batch_input_ids = torch.from_numpy(np.concatenate(batch_input_ids, dtype=np.int64))
-        attention_mask = torch.from_numpy(np.concatenate(attention_mask, dtype=np.int64))
-        return TensorDataset(batch_input_ids, attention_mask, batch_label_ids)
+        tokens, label_ids = zip(*tokens)
+        input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        b_input_ids, b_attention_mask = _create_batches(input_ids, max_seq_len=max_seq_len, overlap=overlap,
+                                                        pad_id=tokenizer.pad_token_id)
+        data_out["input_ids"].extend(b_input_ids)
+        data_out["attention_mask"].extend(b_attention_mask)
+
+        if seq_labels is not None:
+            label_ids = [config.tags_map[label] for label in label_ids]
+
+            b_label_ids, _ = _create_batches(label_ids, max_seq_len=max_seq_len, overlap=overlap,
+                                             pad_id=tokenizer.pad_token_id)
+
+            data_out["labels"].extend(b_label_ids)
+
+        if seq_cls is not None:
+            cls = seq_cls.strip()
+            data_out["classes"].extend([config.cls_map[cls]] * len(b_input_ids))
+
+        kwargs = {k: torch.from_numpy(np.array(v, dtype=np.int64)) for k, v in data_out.items()}
+
+        return DictTensorDataset(**kwargs)
+
