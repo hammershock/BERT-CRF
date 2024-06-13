@@ -39,7 +39,7 @@ def tqdm_iteration(desc: str, func: Callable[..., Iterator[Dict[str, Any]]]):
         assert isinstance(args[1], DataLoader), "args[1] must be DataLoader"
         if 'epoch' not in kwargs:
             warnings.warn("attr epoch not found in kwargs, not able to display the current iteration progress")
-        progress = f"epoch {kwargs.get('epoch', 0)}/{len(args[1])}"
+        progress = f" epoch {kwargs.get('epoch', 0) + 1}/{len(args[1])}"
         p_bar = tqdm(generator, desc=desc + progress, total=len(args[1]))  # args[1] should be dataloader
         result = None
         for results in p_bar:
@@ -112,7 +112,7 @@ def validate(model, data_loader, device, *, epoch=None) -> Dict[str, Any]:
             cls_probs = F.softmax(label_logits, dim=-1)
             cls_labels = torch.argmax(label_logits, dim=-1)  # [batch]
             ret['cls_preds'].extend(cls_labels.cpu().numpy())
-            ret['cls_gts'].extend(batch['class'].cpu().numpy())
+            ret['cls_gts'].extend(batch['classes'].cpu().numpy())
             ret['cls_probs'].extend(cls_probs.cpu().numpy())
         yield ret
 

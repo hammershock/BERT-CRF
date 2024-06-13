@@ -77,5 +77,6 @@ class DatasetConfig(_BaseConfig):
 
 
 if __name__ == "__main__":
-    data_config = DatasetConfig.from_json_file("data/dataset1/data.json")
+    data_config = DatasetConfig.from_json_file("data/product_comments/data.json")
     print(data_config)
+    train_config = TrainerConfig.from_json_file("./data/product_comments/train_config.json")
