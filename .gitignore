@@ -10,3 +10,5 @@
 /model_epoch_2.pth
 /.cache/
 __pycache__/
+/submission.csv
+/output.csv

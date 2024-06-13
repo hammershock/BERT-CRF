@@ -17,6 +17,7 @@ from functools import wraps
 from typing import Dict, Iterator, Callable, Any
 
 import torch
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -24,7 +25,7 @@ from transformers import BertTokenizer, AdamW
 
 from config import TrainerConfig, DatasetConfig
 from model import BERT_CRF
-from ner_dataset import make_ner_dataset
+from ner_dataset import make_dataset_from_config
 from fgm_attack import FGM
 from plot_utils import plot_confusion_matrix, plot_auc_curve
 from utils import ensure_dir_exists
@@ -98,9 +99,9 @@ def validate(model, data_loader, device, *, epoch=None) -> Dict[str, Any]:
     for idx, batch in enumerate(data_loader):
         batch = {k: v.to(device) for k, v in batch.items()}
         predictions, label_logits = model(batch["input_ids"], batch["attention_mask"])
-        # predictions: [batch, seq_len]  # TODO: is crf output a Tensor? Probably not!
+        # predictions: [batch, seq_len]
         # label_logits: Tensor[batch, num_cls]
-
+        # TODO: is crf output a Tensor? Probably not!
         if "labels" in batch:  # 评估序列标注
             for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
                 # pred: [seq_len]
@@ -188,8 +189,8 @@ if __name__ == '__main__':
         model.load_state_dict(torch.load(config.pretrained_model, map_location=config.device))
 
     # datasets
-    train_set = make_ner_dataset(data_config.train_data, data_config, tokenizer)
-    val_set = make_ner_dataset(data_config.dev_data, data_config, tokenizer)
+    train_set = make_dataset_from_config(data_config.train_data, data_config, tokenizer)
+    val_set = make_dataset_from_config(data_config.dev_data, data_config, tokenizer)
 
     # prepare for training here
     # dataloaders, optimizer and logger
@@ -201,16 +202,26 @@ if __name__ == '__main__':
         {'params': list(model.crf.parameters()), 'lr': config.lr_crf}
     ])
 
-    # ensure_dir_exists(config.log_path)
-    # logging.basicConfig(filename=config.log_path, level=logging.INFO)
+    ensure_dir_exists(config.log_path)
+    logging.basicConfig(filename=config.log_path, level=logging.INFO)
 
-    fgm = FGM(model)  # fgm attacker for embedding layers
+    fgm = FGM(model, epsilon=1.0)  # fgm attacker for embedding layers
 
     for epoch in range(config.num_epochs):
         # train the model with batched data, how to train depends on the data keys
-        train_results = train_epoch(model, train_loader, optimizer, device=config.device, fgm=fgm, epoch=epoch)
+        train_results = train_epoch(model, train_loader, optimizer, device=config.device, fgm=None, epoch=epoch)
+        logging.info(f"Epoch {epoch}, running loss: {train_results['running_loss']}")
         # model validation, how to validate depends on the data keys
         val_results = validate(model, val_loader, device=config.device, epoch=epoch)
+        # TODO: calculate several metrics: accuracy, precision, recall, f1-score and add them to result
+        if 'tag_gts' in val_results and 'tag_preds' in val_results:
+            tag_accuracy = [accuracy_score(val_results['tag_gts'], val_results['tag_preds'])]
+            tag_precision, tag_recall, tag_f1, _ = precision_recall_fscore_support(val_results['tag_gts'], val_results['tag_preds'], average='weighted')
+            logging.info(f"Epoch {epoch}, TAG Accuracy: {tag_accuracy}, precision: {tag_precision}, recall: {tag_recall}, f1: {tag_f1}")
+        if 'cls_gts' in val_results and 'cls_preds' in val_results:
+            cls_accuracy = accuracy_score(val_results['cls_gts'], val_results['cls_preds'])
+            cls_precision, cls_recall, cls_f1, _ = precision_recall_fscore_support(val_results['cls_gts'], val_results['cls_preds'], average='weighted')
+            logging.info(f"Epoch {epoch}, CLS Accuracy: {cls_accuracy}, precision: {cls_precision}, recall: {cls_recall}, f1: {cls_f1}")
         plot_val_results(val_results, epoch, config.plot_path, data_config.tags_map, data_config.cls_map)
 
         # save every
