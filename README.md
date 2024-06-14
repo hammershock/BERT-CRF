@@ -36,7 +36,7 @@
 ### 1. 安装依赖库：
 
 ```bash
-pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettytable joblib tqdm
+pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettytable joblib tqdm pyyaml loguru
 ```
 
 ### 2. 下载预训练模型和分词器：
@@ -52,25 +52,27 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 ### 4. 配置训练设置：
 
 示例：
-```json
-{
-  "bert_model_path": "./bert-base-chinese",
-  "special_token_type": "O",
-  "num_epochs": 50,
-  "max_seq_len": 128,
-  "overlap": 0,
-  "batch_size": 280,
-  "lr": 5e-5,
-  "lr_crf": 5e-3,
-  "num_hidden_layers": 12,
-  "save_path": "./models/my_model.pth",
-  "save_every": 1,
-  "log_path": "./logs/train.log",
-  "plot_path": "./plots",
-  "device": "cuda",
-  "num_workers": 14,
-  "pretrained_model": null
-}
+```yaml
+# model structure:
+bert_model_path: "./bert-base-chinese"
+num_hidden_layers: 12  # pretrained model is 12 layers, don't change this
+device: "cuda"
+num_workers: 14  # num_workers of dataloader
+
+# train progress
+num_epochs: 10
+batch_size: 280
+lr: 5e-5
+lr_crf: 5e-3
+use_fgm: False
+
+# train results:
+load_from_checkpoint_path: "./models/model_trained.pth"  # (Optional)
+save_path: "./models/model_trained.pth"  # save_path: (Optional)
+save_every: 1  # save every 1 epoch, (Optional)
+save_interval: 60  # save every 60s, (Optional)
+log_path: "./logs/my_log.log"  # log file path (Optional)
+
 ```
 
 ### 5. 配置数据集配置：
@@ -79,25 +81,31 @@ pip install torch transformers pytorch-crf numpy matplotlib scikit-learn prettyt
 你可以只用它序列标注或句子分类，也可以同时用作两个用途。其余的标签文件设置为空即可。
 
 示例：
-```json
-{
-  "dataset_dir": "./data/dataset1",
-  "tags_map": {"I_T": 8, "I_PER": 7, "B_LOC": 2, "B_PER": 0, "B_T": 3, "B_ORG": 6, "I_LOC": 4, "O": 5, "I_ORG": 1},
-  "special_tag": "O",
-  "cls_map": null,  // 序列分类的标签映射表，同tags_map
-  "data": {
-    "train": {
-      "corpus_file": "train.txt",
-      "tags_file": "train_TAG.txt",
-      "cls_file": null  // 设置为空，相当于只训练序列标注
-    },
-    "dev": {
-      "corpus_file": "dev.txt",
-      "tags_file": "dev_TAG.txt",
-      "cls_file": null
-    }
-  }
-}
+```yaml
+# data labels:
+tags: ['B-BANK', 'I-BANK','O', 'B-COMMENTS_N', 'I-COMMENTS_N', 'B-COMMENTS_ADJ', 'I-COMMENTS_ADJ', 'B-PRODUCT', 'I-PRODUCT']
+special_tag: "O"
+
+num_cls: 3
+
+# data paths
+dataset_dir: "./data/dataset1"
+tag_sep: "\\"
+
+data:
+  train:
+    corpus_file: "./train.txt"
+    tags_file: "train_TAG.txt"  # (Optional)
+    cls_file: "train_CLS.txt"  # (Optional)
+  dev:
+    corpus_file: "dev.txt"
+    tags_file: "dev_TAG.txt"  # (Optional)
+    cls_file: "dev_CLS.txt"  # (Optional)
+
+# data pre-process
+max_seq_len: 96
+overlap: 0
+
 ```
 
 ### 6. 开始训练：
@@ -108,4 +116,4 @@ python train.py --train_config path/to/your/train/config --data_config path/to/y
 
 ### 7. 预测：
 
-训练完成后，可以使用训练好的模型进行预测。请参考`inference.py`脚本。
+训练完成后，可以使用训练好的模型进行预测。请参考`test.py`脚本。
