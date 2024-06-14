@@ -12,8 +12,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import BertTokenizer
 
-from config import DatasetConfig, TrainerConfig
-from model import BERT_CRF
+from config import DataConfig, TrainerConfig
+from model import BertCRF
 from ner_dataset import make_dataset
 
 
@@ -43,17 +43,17 @@ def test(filepath, data_config_path, train_config_path, max_seq_len=128, overlap
     df = pd.read_csv("./data/product_comments/test_public.csv")
     text_lines = df['text'].tolist()
     config = TrainerConfig.from_json_file(train_config_path)
-    data_config = DatasetConfig.from_json_file(data_config_path)
+    data_config = DataConfig.from_json_file(data_config_path)
     tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)
     corpus_lines = read_lines(filepath)
 
     dataset = make_dataset(corpus_lines, tokenizer, max_seq_len, overlap)
     dataloader = DataLoader(dataset, batch_size=16, shuffle=False)
 
-    model = BERT_CRF(config.bert_model_path,
-                     num_labels=len(data_config.tags_map) if data_config.tags_map else 1,
-                     num_classes=len(data_config.cls_map) if data_config.cls_map else 1,
-                     ).to(config.device)
+    model = BertCRF(config.bert_model_path,
+                    num_labels=len(data_config.tags_map) if data_config.tags_map else 1,
+                    num_classes=len(data_config.cls_map) if data_config.cls_map else 1,
+                    ).to(config.device)
     model.load_state_dict(torch.load(config.pretrained_model, map_location=config.device))
     model.eval()
 

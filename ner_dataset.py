@@ -1,14 +1,14 @@
 import os.path
 from collections import defaultdict
-from typing import Dict, List, Tuple, Sequence
+from typing import List, Tuple, Optional
 
 import numpy as np
 import torch
 from joblib import Memory
-
-from config import DatasetConfig
-from utils import DictTensorDataset
 from tqdm import tqdm
+
+from config import DataConfig, _DatasetConfig
+from utils import DictTensorDataset
 
 memory = Memory("./.cache", verbose=0)
 
@@ -16,25 +16,6 @@ memory = Memory("./.cache", verbose=0)
 def load_txt_file(filepath) -> List[str]:
     with open(filepath, 'r', encoding='utf-8') as f:
         return f.readlines()
-
-
-def tokenize(text: str, tokenizer) -> List[int]:
-    """Given a vocabulary, Tokenize a sentence using jieba and map the result into ids"""
-    tokens = []
-    for part in text.split():
-        t = tokenizer.tokenize(part)
-        assert len(t) == 1
-        tokens.extend(t)
-    tokens = ['[CLS]'] + tokens + ['[SEP]']
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    return input_ids
-
-
-def decode(sequence: Sequence[int], vocab: Dict[str, int], unk_flag="[UNK]") -> str:
-    """Given the vocabulary and a sequence of ids, decode it back to string"""
-    idx2word = {v: k for k, v in vocab.items()}
-    tokens = [idx2word.get(i, unk_flag) for i in sequence]
-    return "".join(tokens)
 
 
 def _create_batches(input_ids, max_seq_len: int, overlap: int, pad_id: int) -> Tuple[np.ndarray, ...]:
@@ -53,43 +34,55 @@ def _create_batches(input_ids, max_seq_len: int, overlap: int, pad_id: int) -> T
     return batch_input_ids, attention_mask
 
 
-def make_dataset(corpus_lines, tokenizer, max_seq_len, overlap, tags_lines=None, tags_map=None, special_tag="O", cls_lines=None, cls_map=None) -> DictTensorDataset:
-    nothings = [None] * len(corpus_lines)
-    tags_lines = nothings if tags_lines is None else tags_lines
-    cls_lines = nothings if cls_lines is None else cls_lines
+def make_dataset(*, tokens: List[List[str]],
+                 tags: Optional[List[List[int]]] = None,
+                 classes: Optional[List[int]] = None, special_tag_id: Optional[int] = None,
+                 tokenizer,
+                 max_seq_len: int, overlap: int,
+                 ) -> DictTensorDataset:
+    # ================== check inputs ==================
+    assert tags is not None or classes is not None
+    if tags is not None:
+        assert len(tags) == len(tokens)
+        assert special_tag_id is not None
+        for tokens_, tags_ in zip(tokens, tags):
+            assert len(tokens_) == len(tags_)
+    else:
+        tags = [None] * len(tokens)
+
+    if classes is not None:
+        assert len(classes) == len(tokens)
+    else:
+        classes = [None] * len(tokens)
+    # ==================================================
+
     data_out = defaultdict(list)
-    zipped_gen = zip(corpus_lines, tags_lines, cls_lines)
-    for idx, (text, seq_labels, seq_cls) in tqdm(enumerate(zipped_gen), total=len(corpus_lines)):
-        parts = text.strip("\n")  # .split()
-        parts = parts.replace(" ", ",").replace("\t", ",").replace("　", ",")
-        labels = seq_labels.strip().split() if seq_labels is not None else [None] * len(parts)
 
-        tokens = [("[CLS]", special_tag)]
-        for part, label in zip(parts, labels):
-            tokens += [(token, label) for token in tokenizer.tokenize(part)]
-        tokens += [("[SEP]", special_tag)]
+    for idx, (token_lst, tag_lst, cls) in tqdm(enumerate(zip(tokens, tags, classes)), total=len(tokens)):
+        if tag_lst is None:
+            tag_lst = [None] * len(token_lst)
 
-        tokens, label_ids = zip(*tokens)
+        # tokenize each part of the line
+        tokens = [("[CLS]", special_tag_id)]
+        for token, tag in zip(token_lst, tag_lst):
+            tokens += [(token, tag) for token in tokenizer.tokenize(token)]
+        tokens += [("[SEP]", special_tag_id)]
+
+        tokens, tag_ids = zip(*tokens)
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
-        # cut the sequence into equal-length parts, and pad the remaining part
-        b_input_ids, b_attention_mask = _create_batches(input_ids, max_seq_len=max_seq_len,
-                                                        overlap=overlap,
-                                                        pad_id=tokenizer.pad_token_id)
-        data_out["input_ids"].extend(b_input_ids)
-        data_out["attention_mask"].extend(b_attention_mask)
-        data_out["id_groups"].extend([idx] * len(b_input_ids))
 
-        if seq_labels is not None:
-            label_ids = [tags_map[label] for label in label_ids]
+        # break the sequence into equal parts, and add padding
+        batched_input_ids, batched_attn_mask = _create_batches(input_ids, max_seq_len, overlap, tokenizer.pad_token_id)
+        data_out["input_ids"].extend(batched_input_ids)
+        data_out["attention_mask"].extend(batched_attn_mask)
+        data_out["id_groups"].extend([idx] * len(batched_input_ids))
 
-            b_label_ids, _ = _create_batches(label_ids, max_seq_len=max_seq_len, overlap=overlap,
-                                             pad_id=tokenizer.pad_token_id)
+        if tag_ids[1] is not None:
+            batched_tag_ids, _ = _create_batches(tag_ids, max_seq_len, overlap, tokenizer.pad_token_id)
+            data_out["tag_ids"].extend(batched_tag_ids)
 
-            data_out["labels"].extend(b_label_ids)
-
-        if seq_cls is not None:
-            cls = seq_cls.strip()
-            data_out["classes"].extend([cls_map[cls]] * len(b_input_ids))
+        if cls is not None:
+            data_out["cls_ids"].extend([cls] * len(batched_input_ids))
 
     kwargs = {k: torch.from_numpy(np.array(v, dtype=np.int64)) for k, v in data_out.items()}
 
@@ -97,7 +90,7 @@ def make_dataset(corpus_lines, tokenizer, max_seq_len, overlap, tags_lines=None,
 
 
 @memory.cache
-def make_dataset_from_config(data_files, config: DatasetConfig, tokenizer):
+def make_dataset_from_config(data_files: _DatasetConfig, config: DataConfig, tokenizer):
     """
     make tensor datasets from data config, with line cut and auto padding
     the out keys depends on the config
@@ -106,13 +99,11 @@ def make_dataset_from_config(data_files, config: DatasetConfig, tokenizer):
     tags_lines = load_txt_file(os.path.join(config.dataset_dir, data_files.tags_file)) if data_files.tags_file else None
     cls_lines = load_txt_file(os.path.join(config.dataset_dir, data_files.cls_file)) if data_files.cls_file else None
 
-    return make_dataset(corpus_lines,
-                        tokenizer,
+    return make_dataset(tokens=[list(line.strip()) for line in corpus_lines],
+                        tags=[[config.tags_map[tag] for tag in line.strip().split(config.tag_sep)] for line in tags_lines] if tags_lines else None,
+                        classes=[int(line.strip()) for line in cls_lines] if cls_lines else None,
+                        special_tag_id=config.tags_map.get(config.special_tag, None),
+                        tokenizer=tokenizer,
                         max_seq_len=config.max_seq_len,
                         overlap=config.overlap,
-                        tags_lines=tags_lines,
-                        tags_map=config.tags_map,
-                        special_tag=config.special_tag,
-                        cls_lines=cls_lines,
-                        cls_map=config.cls_map)
-
+                        )

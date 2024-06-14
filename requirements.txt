@@ -1,9 +1,11 @@
-torch~=2.3.0
-tqdm~=4.66.4
-transformers~=4.40.2
-TorchCRF~=1.1.0
-matplotlib~=3.9.0
 numpy~=1.26.4
-scikit-learn~=1.4.2
+pandas~=2.2.2
+torch~=2.3.1
+tqdm~=4.66.4
+transformers~=4.41.2
+loguru~=0.7.2
+scikit-learn~=1.5.0
+PyYAML~=6.0.1
 prettytable~=3.10.0
+matplotlib~=3.9.0
 joblib~=1.4.2

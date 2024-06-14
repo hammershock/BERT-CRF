@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import NamedTuple, List, overload
+from typing import NamedTuple, List, overload, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -32,10 +32,12 @@ def get_bert_model(bert_model_path, num_hidden_layers, cache_dir, pretrained) ->
         # random Initialize
         bert = BertModel(config)
         if pretrained == InitializeMethod.pretrained_embeddings:  # use pretrained embeddings
+            print(f"Initialized pretrained embeddings")
             pretrained_model = BertModel.from_pretrained(bert_model_path, cache_dir=cache_dir)
             bert.embeddings = pretrained_model.embeddings
             _init_weights(bert.encoder, bert.config)
     elif pretrained == InitializeMethod.pretrained_bert:
+        print(f"Initialized pretrained_bert model")
         assert num_hidden_layers == 12
         bert = BertModel.from_pretrained(bert_model_path, cache_dir=cache_dir)
     else:
@@ -44,45 +46,43 @@ def get_bert_model(bert_model_path, num_hidden_layers, cache_dir, pretrained) ->
 
 
 # labels/logits: [batch, seq_len]
-Output = NamedTuple("Output", [("labels", List[List[int]]), ("emissions", torch.Tensor)])
+Output = NamedTuple("Output", [("labels", List[List[int]]), ("emissions", torch.Tensor), ("cls_probs", torch.Tensor)])
 
 
-class BERT_CRF(nn.Module):
+class BertCRF(nn.Module):
     """bert-crf model for sequence labeling and sequence classification"""
 
     def __init__(self, bert_model_path, num_labels=1, num_classes=1, num_hidden_layers=12,
                  cache_dir='./bert-base-chinese', pretrained=InitializeMethod.pretrained_bert):
-        super(BERT_CRF, self).__init__()
+        super(BertCRF, self).__init__()
         self.bert = get_bert_model(bert_model_path, num_hidden_layers, cache_dir, pretrained)
         self.dropout = nn.Dropout(0.1)
         self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
-        # self.classifier = nn.Linear(self.bert.config.hidden_size, num_classes)
+        self.classifier = nn.Linear(self.bert.config.hidden_size, num_classes)
         self.crf = CRF(num_labels, batch_first=True)
 
     @overload
-    def forward(self, input_ids, attention_mask, label: None = None) -> Output:
+    def forward(self, input_ids, attention_mask, label=None) -> Output:
         ...
 
     @overload
     def forward(self, input_ids, attention_mask, label: torch.Tensor) -> torch.Tensor:
         ...
 
-    def forward(self, input_ids, attention_mask, labels=None, **kwargs):
-        outputs = self.bert(input_ids, attention_mask=attention_mask)
-        sequence_output = self.dropout(outputs[0])
-        emissions = self.fc(sequence_output)
+    def forward(self, input_ids, attention_mask, tag_ids: Optional[torch.Tensor] = None,
+                cls_ids: Optional[torch.Tensor] = None, **kwargs) -> Union[Output, torch.Tensor]:
+        sequence_output, pooled_output = self.bert(input_ids, attention_mask=attention_mask)
+        emissions = self.fc(self.dropout(sequence_output))
+        cls_probs = self.classifier(self.dropout(pooled_output))
 
-        if labels is None:
+        if tag_ids is None and cls_ids is None:
             decoded_labels = self.crf.decode(emissions, mask=attention_mask.bool())  # decoded ids (integers)
-            return Output(labels=decoded_labels, emissions=emissions)
-        loss = -self.crf(emissions, labels, mask=attention_mask.bool())
-        return loss
+            return Output(labels=decoded_labels, emissions=emissions, cls_probs=cls_probs)
 
+        crf_loss = -self.crf(emissions, tag_ids, mask=attention_mask.bool(), reduction='mean') if tag_ids is not None else 0.0
+        cls_loss = self.loss_fct(cls_probs, cls_ids) if cls_ids is not None else 0.0
+        crf_weight = 1 / (crf_loss.item() ** 0.5 + 1e-8) if crf_loss != 0.0 else 0.0
+        cls_weight = 1 / (cls_loss.item() ** 0.5 + 1e-8) if cls_loss != 0.0 else 0.0
+        total_loss = crf_weight * crf_loss + cls_weight * cls_loss
 
-if __name__ == '__main__':
-    model = BERT_CRF('bert-base-chinese', num_labels=9, pretrained=InitializeMethod.random)
-    # model = BERT_Softmax('bert-base-chinese', num_labels=9, cache_dir="./bert-base-chinese")
-    # print(model.bert.embeddings.word_embeddings.weight)  # 打印词嵌入参数
-    print(f'Number of layers: {model.bert.config.num_hidden_layers}')
-    print(f'Vocabulary size: {model.bert.config.vocab_size}')
-    print(f'Embedding dimension: {model.bert.config.hidden_size}')
+        return total_loss

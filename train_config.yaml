@@ -1,0 +1,23 @@
+"""
+train config for AutoDL L20(48GiB), seq_len=128
+"""
+
+# model structure:
+bert_model_path: "./bert-base-chinese"
+num_hidden_layers: 12  # pretrained model is 12 layers, don't change this
+device: "cuda"
+num_workers: 14  # num_workers of dataloader
+
+# train progress
+num_epochs: 10
+batch_size: 280
+lr: 5e-5
+lr_crf: 5e-3
+use_fgm: False
+
+# train results:
+load_from_checkpoint_path: null  # (Optional)
+save_path: "./models/model_trained.pth"  # save_path: (Optional)
+save_every: 1  # save every 1 epoch, (Optional)
+save_interval: 60  # save every 60s, (Optional)
+log_path: "./logs/my_log.log"  # log file path (Optional)

@@ -1,0 +1,21 @@
+# data labels:
+tags: ["B_PER", "I_ORG", "B_LOC", "B_T", "I_LOC", "O", "B_ORG", "I_PER", "I_T"]
+special_tag: "O"
+
+# data paths
+dataset_dir: "./data/dataset1"
+tag_sep: " "
+
+data:
+  train:
+    corpus_file: "./train.txt"
+    tags_file: "train_TAG.txt"  # (Optional)
+    cls_file: None  # (Optional)
+  dev:
+    corpus_file: "dev.txt"
+    tags_file: "dev_TAG.txt"  # (Optional)
+    cls_file: None  # (Optional)
+
+# data pre-process
+max_seq_len: 96
+overlap: 0
