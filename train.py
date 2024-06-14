@@ -79,14 +79,16 @@ def validate(model: BertCRF, data_loader, device, *, epoch=None) -> Dict[str, An
         output = model.forward(batch["input_ids"], batch["attention_mask"])
 
         if "tag_ids" in batch:  # 评估序列标注
-            for label_pred, label, mask in zip(output.labels, batch["labels"], batch["attention_mask"]):
+            for label_pred, label, mask in zip(output.labels, batch["tag_ids"], batch["attention_mask"]):
                 valid_labels = label[mask == 1].detach().cpu().numpy()
                 counts['tag_gts'].extend(valid_labels)
                 counts['tag_preds'].extend(label_pred)
+
             ret["tag_accuracy"] = accuracy_score(counts["tag_gts"], counts["tag_preds"])
             ret["tag_precision"], ret["tag_recall"], ret["tag_f1"], _ = multi_scores(counts["tag_gts"],
                                                                                      counts["tag_preds"],
-                                                                                     average='weighted')
+                                                                                     average=None,  # 'weighted'
+                                                                                     zero_division=0)
 
         if "cls_ids" in batch:  # 评估分类任务
             cls_probs = output.cls_probs
@@ -97,7 +99,8 @@ def validate(model: BertCRF, data_loader, device, *, epoch=None) -> Dict[str, An
             ret["cls_accuracy"] = accuracy_score(counts["cls_gts"], counts["cls_preds"])
             ret["cls_precision"], ret["cls_recall"], ret["cls_f1"], _ = multi_scores(counts["cls_gts"],
                                                                                      counts["cls_preds"],
-                                                                                     average='weighted')
+                                                                                     average=None,  # 'weighted'
+                                                                                     zero_division=0)
 
         yield ret
 
@@ -132,10 +135,10 @@ if __name__ == '__main__':
     tokenizer = BertTokenizer.from_pretrained(train_config.bert_model_path)
 
     # define model
-    model = BertCRF(train_config.bert_model_path, num_labels=len(data_config.tags)).to(train_config.device)
+    model = BertCRF(train_config.bert_model_path, num_labels=len(data_config.tags), num_classes=data_config.num_cls).to(train_config.device)
 
     # load model from checkpoint
-    if train_config.pretrained_model is not None:
+    if train_config.load_from_checkpoint_path is not None:
         try:
             model.load_state_dict(torch.load(train_config.pretrained_model, map_location=train_config.device))
         except:
@@ -153,7 +156,7 @@ if __name__ == '__main__':
                             num_workers=train_config.num_workers)
 
     optimizer = AdamW([
-        {'params': list(model.bert.parameters()) + list(model.fc.parameters()), 'lr': train_config.lr},
+        {'params': list(model.bert.parameters()) + list(model.fc.parameters()) + list(model.classifier.parameters()), 'lr': train_config.lr},
         {'params': list(model.crf.parameters()), 'lr': train_config.lr_crf}
     ])
 

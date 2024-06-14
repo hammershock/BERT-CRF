@@ -1,20 +1,23 @@
 # data labels:
-tags: ["B_PER", "I_ORG", "B_LOC", "B_T", "I_LOC", "O", "B_ORG", "I_PER", "I_T"]
+#tags: ["B_PER", "I_ORG", "B_LOC", "B_T", "I_LOC", "O", "B_ORG", "I_PER", "I_T"]
+tags: ['B-BANK', 'I-BANK','O', 'B-COMMENTS_N', 'I-COMMENTS_N', 'B-COMMENTS_ADJ', 'I-COMMENTS_ADJ', 'B-PRODUCT', 'I-PRODUCT']
 special_tag: "O"
+
+num_cls: 3
 
 # data paths
 dataset_dir: "./data/dataset1"
-tag_sep: " "
+tag_sep: "\\"
 
 data:
   train:
     corpus_file: "./train.txt"
     tags_file: "train_TAG.txt"  # (Optional)
-    cls_file: None  # (Optional)
+    cls_file: "train_CLS.txt"  # (Optional)
   dev:
     corpus_file: "dev.txt"
     tags_file: "dev_TAG.txt"  # (Optional)
-    cls_file: None  # (Optional)
+    cls_file: "dev_CLS.txt"  # (Optional)
 
 # data pre-process
 max_seq_len: 96

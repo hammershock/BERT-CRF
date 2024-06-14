@@ -20,12 +20,15 @@ class _BaseConfig:
 
 class DataConfig(_BaseConfig):
     def __init__(self, *, tags, special_tag, tag_sep=" ",  # data labels
+                 num_cls,
                  dataset_dir, data,  # data paths
                  max_seq_len, overlap):  # pre-process
         self.tags = tags
         self.tags_map = {tag: idx for idx, tag in enumerate(tags)}
         self.special_tag = special_tag
         self.tag_sep = tag_sep
+
+        self.num_cls = num_cls
 
         # data paths
         self.dataset_dir = dataset_dir
@@ -55,8 +58,8 @@ class TrainerConfig(_BaseConfig):
 
         self.num_epochs = num_epochs
         self.batch_size = batch_size
-        self.lr = lr
-        self.lr_crf = lr_crf
+        self.lr = float(lr)
+        self.lr_crf = float(lr_crf)
         self.use_fgm = use_fgm
 
         self.load_from_checkpoint_path = load_from_checkpoint_path

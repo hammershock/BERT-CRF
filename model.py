@@ -71,7 +71,7 @@ class BertCRF(nn.Module):
 
     def forward(self, input_ids, attention_mask, tag_ids: Optional[torch.Tensor] = None,
                 cls_ids: Optional[torch.Tensor] = None, **kwargs) -> Union[Output, torch.Tensor]:
-        sequence_output, pooled_output = self.bert(input_ids, attention_mask=attention_mask)
+        sequence_output, pooled_output = self.bert(input_ids, attention_mask=attention_mask)[:2]
         emissions = self.fc(self.dropout(sequence_output))
         cls_probs = self.classifier(self.dropout(pooled_output))
 
@@ -79,10 +79,20 @@ class BertCRF(nn.Module):
             decoded_labels = self.crf.decode(emissions, mask=attention_mask.bool())  # decoded ids (integers)
             return Output(labels=decoded_labels, emissions=emissions, cls_probs=cls_probs)
 
-        crf_loss = -self.crf(emissions, tag_ids, mask=attention_mask.bool(), reduction='mean') if tag_ids is not None else 0.0
-        cls_loss = self.loss_fct(cls_probs, cls_ids) if cls_ids is not None else 0.0
-        crf_weight = 1 / (crf_loss.item() ** 0.5 + 1e-8) if crf_loss != 0.0 else 0.0
-        cls_weight = 1 / (cls_loss.item() ** 0.5 + 1e-8) if cls_loss != 0.0 else 0.0
-        total_loss = crf_weight * crf_loss + cls_weight * cls_loss
+        if tag_ids is not None and cls_ids is not None:
+            crf_loss = -self.crf(emissions, tag_ids, mask=attention_mask.bool(), reduction='mean')
+            cls_loss = F.cross_entropy(cls_probs, cls_ids)
+
+            crf_weight = 1 / (crf_loss.item() ** 0.5 + 1e-8)
+            cls_weight = 1 / (cls_loss.item() ** 0.5 + 1e-8)
+            total_weight = crf_weight + cls_weight
+            crf_loss = crf_loss * (crf_weight / total_weight)
+            cls_loss = cls_loss * (cls_weight / total_weight)
+
+            total_loss = crf_loss + cls_loss
+        elif tag_ids is not None:
+            total_loss = -self.crf(emissions, tag_ids, mask=attention_mask.bool(), reduction='mean')
+        else:
+            total_loss = self.loss_fct(cls_probs, cls_ids)
 
         return total_loss

@@ -27,38 +27,36 @@ def read_lines(file_path: str) -> List[str]:
 
 
 @torch.no_grad()
-def inference(model, inputs: dict, device) -> Tuple[np.ndarray, np.ndarray]:
+def inference(model: BertCRF, inputs: dict, device) -> Tuple[List[List[int]], np.ndarray]:
     inputs = {k: v.to(device) for k, v in inputs.items()}
-    tag_ids, cls_logits = model(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"])
-    cls = torch.argmax(cls_logits, dim=-1)
+    output = model.forward(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"])
+    cls = torch.argmax(output.cls_probs, dim=-1)
     classes = cls.cpu().numpy()  # 【batch, num_cls】
 
-    return tag_ids, classes
+    return output.labels, classes
 
 
-def test(filepath, data_config_path, train_config_path, max_seq_len=128, overlap=0):
+def test():
     """
     序列标注+文本分类模型测试过程
     """
     df = pd.read_csv("./data/product_comments/test_public.csv")
     text_lines = df['text'].tolist()
-    config = TrainerConfig.from_json_file(train_config_path)
-    data_config = DataConfig.from_json_file(data_config_path)
+    config = TrainerConfig.from_yaml_file("./train_config.yaml")
+    data_config = DataConfig.from_yaml_file("./data.yaml")
     tokenizer = BertTokenizer.from_pretrained(config.bert_model_path)
-    corpus_lines = read_lines(filepath)
 
-    dataset = make_dataset(corpus_lines, tokenizer, max_seq_len, overlap)
+    dataset = make_dataset(tokens=[list(text_line.replace(" ", ",").replace("\t", ",").replace("　", ",")) for text_line in text_lines], tokenizer=tokenizer, max_seq_len=128, overlap=0)
     dataloader = DataLoader(dataset, batch_size=16, shuffle=False)
 
     model = BertCRF(config.bert_model_path,
                     num_labels=len(data_config.tags_map) if data_config.tags_map else 1,
-                    num_classes=len(data_config.cls_map) if data_config.cls_map else 1,
+                    num_classes=data_config.num_cls,
                     ).to(config.device)
-    model.load_state_dict(torch.load(config.pretrained_model, map_location=config.device))
+    model.load_state_dict(torch.load(config.load_from_checkpoint_path, map_location=config.device))
     model.eval()
 
     tag_idx2tag = {v: k for k, v in data_config.tags_map.items()}
-    class_idx2class = {v: k for k, v in data_config.cls_map.items()}
 
     results = defaultdict(lambda: defaultdict(list))
     for batch in tqdm(dataloader, "testing lines"):
@@ -79,9 +77,9 @@ def test(filepath, data_config_path, train_config_path, max_seq_len=128, overlap
             # print(text_lines[group_id])
             line = list(text_lines[group_id])
             # if len(line) != len(tokens) - 2:
-            #     for char, token in zip(line, tokens[1:-1]):
-            #         print(char, token)
-            #     print("-" * 10)
+            # for char, token in zip(line, tokens[1:-1]):
+            #     print(char, token)
+            # print("-" * 10)
             results[group_id]['tags'].append(tag_ids[i])
             results[group_id]['classes'].append(classes[i])
             # print(type(tokens))
@@ -94,11 +92,11 @@ def test(filepath, data_config_path, train_config_path, max_seq_len=128, overlap
 
     for group_id, data in results.items():
         # Flatten and remove overlap
-        flat_tags = [tag_idx2tag[tag] for seq in data['tags'] for tag in seq[overlap:]]
+        flat_tags = [tag_idx2tag[tag] for seq in data['tags'] for tag in seq]  # [overlap:]
         final_tags[group_id] = flat_tags[1:-1]
 
         # Determine final class by majority vote
-        flat_classes = [class_idx2class[cls] for cls in data['classes']]
+        flat_classes = [cls for cls in data['classes']]
         final_class = max(set(flat_classes), key=flat_classes.count)
         final_classes[group_id] = final_class
 
@@ -143,11 +141,10 @@ def check_alignment(input_file: str, output_file: str) -> bool:
 
 
 if __name__ == '__main__':
-    final_tags, final_classes = test("data/product_comments/test_public.csv", "./data/product_comments/data.json",
-         "./data/product_comments/train_config.json", max_seq_len=128)
+    final_tags, final_classes = test()
 
     # final_tags: Dict[id, List[tags]]
     # final_classes: Dict[id, cls]
 
     save_results_to_csv(final_tags, final_classes, "./output.csv")
-    check_alignment("data/product_comments/test_public.csv", "./output.csv")
+    # check_alignment("data/product_comments/test_public.csv", "./output.csv")

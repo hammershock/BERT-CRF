@@ -12,3 +12,5 @@
 __pycache__/
 /submission.csv
 /output.csv
+/extract_data.py
+/logs/

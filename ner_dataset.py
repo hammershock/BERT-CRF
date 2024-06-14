@@ -41,17 +41,17 @@ def make_dataset(*, tokens: List[List[str]],
                  max_seq_len: int, overlap: int,
                  ) -> DictTensorDataset:
     # ================== check inputs ==================
-    assert tags is not None or classes is not None
+    # assert tags is not None or classes is not None
     if tags is not None:
-        assert len(tags) == len(tokens)
+        assert len(tags) == len(tokens), f"{len(tags)} != {len(tokens)}"
         assert special_tag_id is not None
         for tokens_, tags_ in zip(tokens, tags):
-            assert len(tokens_) == len(tags_)
+            assert len(tokens_) == len(tags_), f"{len(tokens_)} != {len(tags_)}"
     else:
         tags = [None] * len(tokens)
 
     if classes is not None:
-        assert len(classes) == len(tokens)
+        assert len(classes) == len(tokens), f"{len(classes)} != {len(tokens)}"
     else:
         classes = [None] * len(tokens)
     # ==================================================
@@ -99,7 +99,7 @@ def make_dataset_from_config(data_files: _DatasetConfig, config: DataConfig, tok
     tags_lines = load_txt_file(os.path.join(config.dataset_dir, data_files.tags_file)) if data_files.tags_file else None
     cls_lines = load_txt_file(os.path.join(config.dataset_dir, data_files.cls_file)) if data_files.cls_file else None
 
-    return make_dataset(tokens=[list(line.strip()) for line in corpus_lines],
+    return make_dataset(tokens=[line.strip().split(config.tag_sep) for line in corpus_lines],
                         tags=[[config.tags_map[tag] for tag in line.strip().split(config.tag_sep)] for line in tags_lines] if tags_lines else None,
                         classes=[int(line.strip()) for line in cls_lines] if cls_lines else None,
                         special_tag_id=config.tags_map.get(config.special_tag, None),
