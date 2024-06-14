@@ -46,7 +46,7 @@ class TrainerConfig(_BaseConfig):
         self.save_every = save_every
         self.log_path = log_path
 
-    def print_config(self):
+    def table(self):
         """use pretty to print the config out, is that cool?"""
         table = PrettyTable()
         table.field_names = ["Parameter", "Value"]
@@ -73,7 +73,7 @@ class DatasetConfig(_BaseConfig):
         self.data = data
         self.train_data = DataConfig(**data["train"])
         self.dev_data = DataConfig(**data["dev"])
-        self.test_file = data["test"]
+        self.test_file = data.get("test")
 
 
 if __name__ == "__main__":

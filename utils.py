@@ -1,7 +1,12 @@
 import json
 import os
+import warnings
+from functools import wraps
+from typing import Callable, Iterator, Dict, Any
 
-from torch.utils.data import Dataset
+from loguru import logger
+from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 
 def ensure_dir_exists(filepath) -> None:
@@ -39,3 +44,36 @@ class DictTensorDataset(Dataset):
 
     def __getitem__(self, index):
         return {key: tensor[index] for key, tensor in self.tensors.items()}
+
+
+def tqdm_iteration(desc: str, func: Callable[..., Iterator[Dict[str, Any]]]):
+    """iteration helper"""
+    @wraps(func)
+    def wrapper(*args, **kwargs) -> Dict[str, Any]:
+        generator = func(*args, **kwargs)
+        assert isinstance(args[1], DataLoader), "args[1] must be DataLoader"
+        if 'epoch' not in kwargs:
+            warnings.warn("attr epoch not found in kwargs, not able to display the current iteration progress")
+        progress = f" epoch {kwargs.get('epoch', 0) + 1}"
+        p_bar = tqdm(generator, desc=desc + progress, total=len(args[1]))  # args[1] should be dataloader
+        result = None
+        for results in p_bar:
+            p_bar.set_postfix(**{k: v for k, v in results.items() if isinstance(v, float)})
+            result = results
+        return result
+
+    return wrapper
+
+
+def with_tqdm(desc: str):
+    def decorator(func: Callable[..., Iterator[Dict[str, Any]]]):
+        return tqdm_iteration(desc, func)
+    return decorator
+
+
+def log_yield_results(func):
+    def wrapper(*args, **kwargs):
+        for result in func(*args, **kwargs):
+            logger.info(f"Epoch {kwargs.get('epoch', 'unknown')} Yielded result: {result}")
+            yield result
+    return wrapper

@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from typing import NamedTuple, List, overload
 
 import torch
 import torch.nn as nn
@@ -42,6 +43,10 @@ def get_bert_model(bert_model_path, num_hidden_layers, cache_dir, pretrained) ->
     return bert
 
 
+# labels/logits: [batch, seq_len]
+Output = NamedTuple("Output", [("labels", List[List[int]]), ("emissions", torch.Tensor)])
+
+
 class BERT_CRF(nn.Module):
     """bert-crf model for sequence labeling and sequence classification"""
 
@@ -51,34 +56,26 @@ class BERT_CRF(nn.Module):
         self.bert = get_bert_model(bert_model_path, num_hidden_layers, cache_dir, pretrained)
         self.dropout = nn.Dropout(0.1)
         self.fc = nn.Linear(self.bert.config.hidden_size, num_labels)
-        self.classifier = nn.Linear(self.bert.config.hidden_size, num_classes)
+        # self.classifier = nn.Linear(self.bert.config.hidden_size, num_classes)
         self.crf = CRF(num_labels, batch_first=True)
 
-    def forward(self, input_ids, attention_mask, labels=None, classes=None):
+    @overload
+    def forward(self, input_ids, attention_mask, label: None = None) -> Output:
+        ...
+
+    @overload
+    def forward(self, input_ids, attention_mask, label: torch.Tensor) -> torch.Tensor:
+        ...
+
+    def forward(self, input_ids, attention_mask, labels=None, **kwargs):
         outputs = self.bert(input_ids, attention_mask=attention_mask)
         sequence_output = self.dropout(outputs[0])
-        pooled_output = outputs[1]  # Pooled output from BERT for classification
-
         emissions = self.fc(sequence_output)
-        logits = self.classifier(pooled_output)
 
-        if labels is None and classes is None:
+        if labels is None:
             decoded_labels = self.crf.decode(emissions, mask=attention_mask.bool())  # decoded ids (integers)
-            return decoded_labels, logits
-
-        loss = {}
-        if labels is not None:
-            loss["seq"] = - self.crf(emissions, labels, mask=attention_mask.bool())
-        if classes is not None:
-            loss["cls"] = F.cross_entropy(logits, classes)
-        if len(loss) == 2:
-            seq_loss = loss["seq"]
-            cls_loss = loss["cls"]
-            scale_seq = torch.sqrt(cls_loss / seq_loss)
-            scale_cls = torch.sqrt(seq_loss / cls_loss)
-            loss = scale_seq * seq_loss + scale_cls * cls_loss
-        else:
-            loss = sum(loss.values())
+            return Output(labels=decoded_labels, emissions=emissions)
+        loss = -self.crf(emissions, labels, mask=attention_mask.bool())
         return loss
 
 

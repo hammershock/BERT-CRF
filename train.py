@@ -8,16 +8,17 @@
 
 """
 import argparse
-import csv
-import logging
-import os
+import time
+
+from loguru import logger
 import warnings
 from collections import defaultdict
 from functools import wraps
 from typing import Dict, Iterator, Callable, Any
 
 import torch
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import precision_recall_fscore_support as multi_scores
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -27,42 +28,15 @@ from config import TrainerConfig, DatasetConfig
 from model import BERT_CRF
 from ner_dataset import make_dataset_from_config
 from fgm_attack import FGM
-from plot_utils import plot_confusion_matrix, plot_auc_curve
-from utils import ensure_dir_exists
-
-
-def tqdm_iteration(desc: str, func: Callable[..., Iterator[Dict[str, Any]]]):
-    """iteration helper"""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs) -> Dict[str, Any]:
-        generator = func(*args, **kwargs)
-        assert isinstance(args[1], DataLoader), "args[1] must be DataLoader"
-        if 'epoch' not in kwargs:
-            warnings.warn("attr epoch not found in kwargs, not able to display the current iteration progress")
-        progress = f" epoch {kwargs.get('epoch', 0) + 1}/{len(args[1])}"
-        p_bar = tqdm(generator, desc=desc + progress, total=len(args[1]))  # args[1] should be dataloader
-        result = None
-        for results in p_bar:
-            p_bar.set_postfix(**{k: v for k, v in results.items() if isinstance(v, float)})
-            result = results
-        return result
-
-    return wrapper
-
-
-def with_tqdm(desc: str):
-    def decorator(func: Callable[..., Iterator[Dict[str, Any]]]):
-        return tqdm_iteration(desc, func)
-
-    return decorator
+from utils import ensure_dir_exists, with_tqdm, log_yield_results
 
 
 @with_tqdm("Training")
-def train_epoch(model, data_loader, optimizer, device, *, fgm=None, epoch=None) -> Dict[str, Any]:
+@log_yield_results
+def train_epoch(model, data_loader, optimizer, device, *, fgm=None, epoch=None, save_interval=None, save_path=None) -> Dict[str, Any]:
     running_loss = 0.0
     model.train()
-
+    t = time.time()  # last save time
     for idx, batch in enumerate(data_loader):
         # (batch_size, seq_len)
         batch = {k: v.to(device) for k, v in batch.items()}
@@ -77,14 +51,21 @@ def train_epoch(model, data_loader, optimizer, device, *, fgm=None, epoch=None) 
             loss_adv.backward()
             fgm.restore()
 
+        if save_interval is not None:
+            t1 = time.time()
+            if t1 - t > save_interval:
+                torch.save(model.state_dict(), save_path)
+                t = t1
+
         optimizer.step()
         running_loss += loss.item()
         yield {"running_loss": running_loss / (idx + 1)}
 
 
 @with_tqdm("Validating")
+@log_yield_results
 @torch.no_grad()
-def validate(model, data_loader, device, *, epoch=None) -> Dict[str, Any]:
+def validate(model: BERT_CRF, data_loader, device, *, epoch=None) -> Dict[str, Any]:
     """
     validate model on dev set
     :param model:
@@ -94,56 +75,20 @@ def validate(model, data_loader, device, *, epoch=None) -> Dict[str, Any]:
     :return:
     """
     model.eval()
-    ret = defaultdict(list)
-
+    counts = defaultdict(list)
+    ret = {}
     for idx, batch in enumerate(data_loader):
         batch = {k: v.to(device) for k, v in batch.items()}
-        predictions, label_logits = model(batch["input_ids"], batch["attention_mask"])
-        # predictions: [batch, seq_len]
-        # label_logits: Tensor[batch, num_cls]
-        # TODO: is crf output a Tensor? Probably not!
+        output = model.forward(batch["input_ids"], batch["attention_mask"])
         if "labels" in batch:  # 评估序列标注
-            for pred, label, mask in zip(predictions, batch["labels"], batch["attention_mask"]):
-                # pred: [seq_len]
+            for label_pred, label, mask in zip(output.labels, batch["labels"], batch["attention_mask"]):
                 valid_labels = label[mask == 1].detach().cpu().numpy()
-                ret['tag_gts'].extend(valid_labels)
-                ret['tag_preds'].extend(pred)
-
-        if "classes" in batch:  # 评估句子分类
-            cls_probs = F.softmax(label_logits, dim=-1)
-            cls_labels = torch.argmax(label_logits, dim=-1)  # [batch]
-            ret['cls_preds'].extend(cls_labels.cpu().numpy())
-            ret['cls_gts'].extend(batch['classes'].cpu().numpy())
-            ret['cls_probs'].extend(cls_probs.cpu().numpy())
+                counts['tag_gts'].extend(valid_labels)
+                counts['tag_preds'].extend(label_pred)
+                ret["accuracy"] = accuracy_score(counts["tag_gts"], counts["tag_preds"])
+                ret["precision"], ret["recall"], ret["f1"], _ = multi_scores(counts["tag_gts"], counts["tag_preds"],
+                                                                             average='weighted')
         yield ret
-
-
-@torch.no_grad()
-def test(model, data_loader, device, output_path):
-    """
-    Test the model and write the results to a CSV file
-    :param model:
-    :param data_loader:
-    :param device:
-    :param output_path: Path to the output CSV file
-    """
-    model.eval()
-    results = []
-
-    for idx, batch in enumerate(data_loader):
-        batch = {k: v.to(device) for k, v in batch.items()}
-        predictions, label_logits = model(batch["input_ids"], batch["attention_mask"])
-        label_preds = F.softmax(label_logits, dim=-1)
-
-        for i, (pred, label) in enumerate(zip(predictions, batch["labels"])):
-            bio_anno = " ".join(pred)
-            cls_label = torch.argmax(label_preds[i], dim=-1).item()
-            results.append([idx * len(predictions) + i, bio_anno, cls_label])
-
-    with open(output_path, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["id", "BIO_anno", "class"])
-        writer.writerows(results)
 
 
 def parse_arguments():
@@ -153,22 +98,18 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def plot_val_results(val_results: Dict[str, Any], epoch: int, plot_path, tags_map, cls_map) -> None:
-    ensure_dir_exists(plot_path)
-    tag_cm_path = os.path.join(plot_path, f"tags_cm_{epoch}.png")
-    cls_cm_path = os.path.join(plot_path, f"cls_cm_{epoch}.png")
-    auc_curve_path = os.path.join(plot_path, f"auc_curve_{epoch}.png")
-
-    plot_confusion_matrix(val_results.get("tag_gts"), val_results.get("tag_preds"), tag_cm_path, tags_map)
-    plot_confusion_matrix(val_results.get("cls_gts"), val_results.get("cls_preds"), cls_cm_path, cls_map)
-    plot_auc_curve(val_results.get("cls_gts"), val_results.get("cls_probs"), auc_curve_path, cls_map)
-
-
 if __name__ == '__main__':
     args = parse_arguments()
+
     # load configs
     config = TrainerConfig.from_json_file(args.train_config)
-    config.print_config()
+
+    ensure_dir_exists(config.log_path)
+    logger.remove()
+    logger.add(config.log_path, rotation="500 MB")
+
+    print(config.table())
+    logger.info(config)
     data_config = DatasetConfig.from_json_file(args.data_config)
 
     """
@@ -202,27 +143,13 @@ if __name__ == '__main__':
         {'params': list(model.crf.parameters()), 'lr': config.lr_crf}
     ])
 
-    ensure_dir_exists(config.log_path)
-    logging.basicConfig(filename=config.log_path, level=logging.INFO)
-
     fgm = FGM(model, epsilon=1.0)  # fgm attacker for embedding layers
 
     for epoch in range(config.num_epochs):
         # train the model with batched data, how to train depends on the data keys
-        train_results = train_epoch(model, train_loader, optimizer, device=config.device, fgm=None, epoch=epoch)
-        logging.info(f"Epoch {epoch}, running loss: {train_results['running_loss']}")
+        train_results = train_epoch(model, train_loader, optimizer, device=config.device, fgm=None, epoch=epoch, save_interval=60, save_path=config.save_path)
         # model validation, how to validate depends on the data keys
         val_results = validate(model, val_loader, device=config.device, epoch=epoch)
-        # TODO: calculate several metrics: accuracy, precision, recall, f1-score and add them to result
-        if 'tag_gts' in val_results and 'tag_preds' in val_results:
-            tag_accuracy = [accuracy_score(val_results['tag_gts'], val_results['tag_preds'])]
-            tag_precision, tag_recall, tag_f1, _ = precision_recall_fscore_support(val_results['tag_gts'], val_results['tag_preds'], average='weighted')
-            logging.info(f"Epoch {epoch}, TAG Accuracy: {tag_accuracy}, precision: {tag_precision}, recall: {tag_recall}, f1: {tag_f1}")
-        if 'cls_gts' in val_results and 'cls_preds' in val_results:
-            cls_accuracy = accuracy_score(val_results['cls_gts'], val_results['cls_preds'])
-            cls_precision, cls_recall, cls_f1, _ = precision_recall_fscore_support(val_results['cls_gts'], val_results['cls_preds'], average='weighted')
-            logging.info(f"Epoch {epoch}, CLS Accuracy: {cls_accuracy}, precision: {cls_precision}, recall: {cls_recall}, f1: {cls_f1}")
-        plot_val_results(val_results, epoch, config.plot_path, data_config.tags_map, data_config.cls_map)
 
         # save every
         if epoch % config.save_every == 0:
